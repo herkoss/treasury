@@ -1,0 +1,19 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: treasury
+      POSTGRES_PASSWORD: treasury
+      POSTGRES_DB: treasury
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U treasury"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+volumes:
+  pgdata:
