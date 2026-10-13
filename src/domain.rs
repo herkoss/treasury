@@ -1,4 +1,7 @@
-use std::collections::{btree_map::Entry, BTreeMap, BTreeSet};
+use std::{
+    collections::{btree_map::Entry, BTreeMap, BTreeSet},
+    str::FromStr,
+};
 
 use uuid::Uuid;
 
@@ -18,8 +21,16 @@ pub enum DomainError {
     TooManyLegs,
     #[error("sender and receiver cannot be the same")]
     InvalidReceiver,
-    #[error("unknown state")]
+    #[error("unknown proposal's state")]
     UnknownState,
+    #[error("unknown proposal's decision")]
+    UnknownDecision,
+    #[error("proposal is settled")]
+    NotPending(State),
+    #[error("this actor cannot approve proposal")]
+    WrongActor,
+    #[error("this actor has already approved proposal")]
+    AlreadyDecided,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -144,8 +155,125 @@ pub fn debit(legs: &[Leg]) -> Result<BTreeMap<(Uuid, String), Amount>, DomainErr
     Ok(res)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum State {
+    Pending,
+    Settled,
+    Rejected,
+    Cancelled,
+    Expired,
+}
+
+impl State {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            State::Pending => "pending",
+            State::Settled => "settled",
+            State::Rejected => "rejected",
+            State::Cancelled => "cancelled",
+            State::Expired => "expired",
+        }
+    }
+}
+
+impl FromStr for State {
+    type Err = DomainError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "pending" => Ok(State::Pending),
+            "settled" => Ok(State::Settled),
+            "rejected" => Ok(State::Rejected),
+            "cancelled" => Ok(State::Cancelled),
+            "expired" => Ok(State::Expired),
+            _ => Err(DomainError::UnknownState),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Decision {
+    Approved,
+    Rejected,
+}
+
+impl Decision {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Decision::Approved => "approved",
+            Decision::Rejected => "rejected",
+        }
+    }
+}
+impl FromStr for Decision {
+    type Err = DomainError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "approved" => Ok(Decision::Approved),
+            "rejected" => Ok(Decision::Rejected),
+            _ => Err(DomainError::UnknownDecision),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Outcome {
+    Settled,
+    Pending,
+    Rejected,
+}
+
+pub struct Proposal {
+    pub state: State,
+    pub proposer: Uuid,
+    pub required: BTreeSet<Uuid>,
+    pub approved: BTreeSet<Uuid>,
+}
+
+impl Proposal {
+    pub fn vote(&self, actor: Uuid, decision: Decision) -> Result<Outcome, DomainError> {
+        if self.state != State::Pending {
+            return Err(DomainError::NotPending(self.state));
+        }
+
+        if !self.required.contains(&actor) {
+            return Err(DomainError::WrongActor);
+        }
+        if self.approved.contains(&actor) {
+            return Err(DomainError::AlreadyDecided);
+        }
+
+        if decision == Decision::Rejected {
+            return Ok(Outcome::Rejected);
+        }
+
+        if self
+            .required
+            .iter()
+            .all(|account| *account == actor || self.approved.contains(account))
+        {
+            return Ok(Outcome::Settled);
+        }
+
+        Ok(Outcome::Pending)
+    }
+
+    pub fn cancel(&self, actor: Uuid) -> Result<(), DomainError> {
+        if self.state != State::Pending {
+            return Err(DomainError::NotPending(self.state));
+        }
+        if self.proposer != actor {
+            return Err(DomainError::WrongActor);
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::domain::DomainError::UnknownDecision;
+
     use super::*;
 
     #[test]
@@ -304,5 +432,151 @@ mod tests {
             ]),
             Ok(())
         );
+    }
+
+    fn swap(alice: Uuid, bob: Uuid, state: State) -> Proposal {
+        Proposal {
+            state,
+            proposer: alice,
+            required: BTreeSet::from([alice, bob]),
+            approved: BTreeSet::from([alice]),
+        }
+    }
+
+    #[test]
+    fn last_approval_settles() {
+        let (alice, bob) = (Uuid::new_v4(), Uuid::new_v4());
+
+        assert_eq!(
+            swap(alice, bob, State::Pending).vote(bob, Decision::Approved),
+            Ok(Outcome::Settled)
+        );
+    }
+
+    #[test]
+    fn transfer_settles_on_the_proposer_vote() {
+        let alice = Uuid::new_v4();
+        let proposal = Proposal {
+            state: State::Pending,
+            proposer: alice,
+            required: BTreeSet::from([alice]),
+            approved: BTreeSet::new(),
+        };
+
+        assert_eq!(
+            proposal.vote(alice, Decision::Approved),
+            Ok(Outcome::Settled)
+        );
+    }
+
+    #[test]
+    fn barter_waits_for_everyone() {
+        let (alice, bob, carol) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+        let mut proposal = Proposal {
+            state: State::Pending,
+            proposer: alice,
+            required: BTreeSet::from([alice, bob, carol]),
+            approved: BTreeSet::from([alice]),
+        };
+
+        assert_eq!(proposal.vote(bob, Decision::Approved), Ok(Outcome::Pending));
+
+        proposal.approved.insert(bob);
+        assert_eq!(
+            proposal.vote(carol, Decision::Approved),
+            Ok(Outcome::Settled)
+        );
+    }
+
+    #[test]
+    fn rejection_closes_the_proposal() {
+        let (alice, bob) = (Uuid::new_v4(), Uuid::new_v4());
+
+        assert_eq!(
+            swap(alice, bob, State::Pending).vote(bob, Decision::Rejected),
+            Ok(Outcome::Rejected)
+        );
+    }
+
+    #[test]
+    fn only_required_accounts_vote() {
+        let (alice, bob, carol) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+
+        assert_eq!(
+            swap(alice, bob, State::Pending).vote(carol, Decision::Approved),
+            Err(DomainError::WrongActor)
+        );
+    }
+
+    #[test]
+    fn a_vote_is_recorded_once() {
+        let (alice, bob) = (Uuid::new_v4(), Uuid::new_v4());
+
+        assert_eq!(
+            swap(alice, bob, State::Pending).vote(alice, Decision::Approved),
+            Err(DomainError::AlreadyDecided)
+        );
+    }
+
+    #[test]
+    fn closed_proposals_take_no_votes() {
+        let (alice, bob) = (Uuid::new_v4(), Uuid::new_v4());
+
+        for state in [
+            State::Settled,
+            State::Rejected,
+            State::Cancelled,
+            State::Expired,
+        ] {
+            assert_eq!(
+                swap(alice, bob, state).vote(bob, Decision::Approved),
+                Err(DomainError::NotPending(state))
+            );
+        }
+    }
+
+    #[test]
+    fn only_the_proposer_cancels_a_pending_proposal() {
+        let (alice, bob) = (Uuid::new_v4(), Uuid::new_v4());
+
+        assert_eq!(swap(alice, bob, State::Pending).cancel(alice), Ok(()));
+        assert_eq!(
+            swap(alice, bob, State::Pending).cancel(bob),
+            Err(DomainError::WrongActor)
+        );
+        assert_eq!(
+            swap(alice, bob, State::Settled).cancel(alice),
+            Err(DomainError::NotPending(State::Settled))
+        );
+    }
+    #[test]
+    fn state_as_str_happy() {
+        assert_eq!(State::Pending.as_str(), "pending");
+        assert_eq!(State::Settled.as_str(), "settled");
+        assert_eq!(State::Rejected.as_str(), "rejected");
+        assert_eq!(State::Cancelled.as_str(), "cancelled");
+        assert_eq!(State::Expired.as_str(), "expired");
+    }
+    #[test]
+    fn state_from_str_happy() {
+        assert_eq!(State::from_str("pending"), Ok(State::Pending));
+        assert_eq!(State::from_str("settled"), Ok(State::Settled));
+        assert_eq!(State::from_str("rejected"), Ok(State::Rejected));
+        assert_eq!(State::from_str("cancelled"), Ok(State::Cancelled));
+        assert_eq!(State::from_str("expired"), Ok(State::Expired));
+        assert_eq!(State::from_str("abc"), Err(DomainError::UnknownState));
+    }
+
+    #[test]
+    fn decision_as_str_happy() {
+        assert_eq!(Decision::Approved.as_str(), "approved");
+        assert_eq!(Decision::Rejected.as_str(), "rejected");
+    }
+
+    #[test]
+    fn decision_as_from_happy() {
+        assert_eq!(Decision::from_str("approved"), Ok(Decision::Approved));
+        assert_eq!(Decision::from_str("rejected"), Ok(Decision::Rejected));
+        assert_eq!(Decision::from_str("abc"), Err(DomainError::UnknownDecision));
     }
 }
