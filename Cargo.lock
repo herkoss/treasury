@@ -1751,6 +1751,7 @@ dependencies = [
  "dotenvy",
  "reqwest",
  "sqlx",
+ "thiserror",
  "time",
  "tokio",
  "tower-http 0.7.1",
