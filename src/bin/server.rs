@@ -10,6 +10,8 @@ struct Args {
     server_addr: String,
     #[arg(long, env = "DATABASE_URL")]
     database_url: String,
+    #[arg(long, env = "OPERATOR_KEY")]
+    operator_key: String,
 }
 
 #[tokio::main]
@@ -29,6 +31,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt().with_env_filter(filter).init();
 
     let pool = treasury::db::connect(&args.database_url).await?;
+    let hash = treasury::utils::key_hash(args.operator_key.as_str());
+    treasury::db::ensure_issuer(&pool, &hash).await?;
 
     let state = treasury::http::AppState { pool };
 

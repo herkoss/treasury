@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO accounts (id, name, key_hash, is_issuer)\n        VALUES ($1, '@issuer', $2, true)\n        ON CONFLICT (id) DO UPDATE SET key_hash = EXCLUDED.key_hash\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6926d6c44c58bf4378fc1dd7f439ff7ac2070740243687450f8bbf89c676fb5f"
+}
