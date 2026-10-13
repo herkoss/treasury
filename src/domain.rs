@@ -1,12 +1,13 @@
 use std::{
     collections::{btree_map::Entry, BTreeMap, BTreeSet},
+    fmt,
     str::FromStr,
 };
 
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum DomainError {
+pub enum AmountError {
     #[error("amount must be digits with at most one dot")]
     InvalidFormat,
     #[error("fractional part exceeds the asset scale")]
@@ -15,67 +16,77 @@ pub enum DomainError {
     NotPositive,
     #[error("amount is too large")]
     Overflow,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum LegsError {
     #[error("legs cannot be empty")]
-    EmptyLegs,
+    Empty,
     #[error("too many legs")]
-    TooManyLegs,
+    TooMany,
     #[error("sender and receiver cannot be the same")]
-    InvalidReceiver,
-    #[error("unknown proposal's state")]
-    UnknownState,
-    #[error("unknown proposal's decision")]
-    UnknownDecision,
-    #[error("proposal is settled")]
+    SameAccount,
+    #[error(transparent)]
+    Amount(#[from] AmountError),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum ProposalError {
+    #[error("proposal is {0}")]
     NotPending(State),
-    #[error("this actor cannot approve proposal")]
+    #[error("this account is not a party to the proposal")]
     WrongActor,
-    #[error("this actor has already approved proposal")]
+    #[error("this account has already decided")]
     AlreadyDecided,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("unknown value {0:?}")]
+pub struct UnknownValue(pub String);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Amount(i64);
 
 impl Amount {
-    pub fn parse(text: &str, scale: u8) -> Result<Self, DomainError> {
+    pub fn parse(text: &str, scale: u8) -> Result<Self, AmountError> {
         let (int_part, frac_part) = match text.split_once('.') {
             Some((int_part, frac_part)) if !int_part.is_empty() && !frac_part.is_empty() => {
                 (int_part, frac_part)
             }
-            Some(_) => return Err(DomainError::InvalidFormat),
+            Some(_) => return Err(AmountError::InvalidFormat),
             None => (text, ""),
         };
 
         let is_digits = |part: &str| part.bytes().all(|b| b.is_ascii_digit());
         if int_part.is_empty() || !is_digits(int_part) || !is_digits(frac_part) {
-            return Err(DomainError::InvalidFormat);
+            return Err(AmountError::InvalidFormat);
         }
         if frac_part.len() > usize::from(scale) {
-            return Err(DomainError::TooManyDecimalPlaces);
+            return Err(AmountError::TooManyDecimalPlaces);
         }
 
         let factor = 10_i64
             .checked_pow(u32::from(scale))
-            .ok_or(DomainError::Overflow)?;
-        let int_value: i64 = int_part.parse().map_err(|_| DomainError::Overflow)?;
+            .ok_or(AmountError::Overflow)?;
+        let int_value: i64 = int_part.parse().map_err(|_| AmountError::Overflow)?;
         let frac_value = if frac_part.is_empty() {
             0
         } else {
-            let digits: i64 = frac_part.parse().map_err(|_| DomainError::Overflow)?;
+            let digits: i64 = frac_part.parse().map_err(|_| AmountError::Overflow)?;
             digits * 10_i64.pow(u32::from(scale) - frac_part.len() as u32)
         };
 
         let total = int_value
             .checked_mul(factor)
             .and_then(|value| value.checked_add(frac_value))
-            .ok_or(DomainError::Overflow)?;
+            .ok_or(AmountError::Overflow)?;
 
         Self::from_minor_units(total)
     }
 
-    pub fn from_minor_units(value: i64) -> Result<Self, DomainError> {
+    pub fn from_minor_units(value: i64) -> Result<Self, AmountError> {
         if value <= 0 {
-            return Err(DomainError::NotPositive);
+            return Err(AmountError::NotPositive);
         }
         Ok(Self(value))
     }
@@ -84,11 +95,11 @@ impl Amount {
         self.0
     }
 
-    pub fn checked_add(self, other: Self) -> Result<Self, DomainError> {
+    pub fn checked_add(self, other: Self) -> Result<Self, AmountError> {
         self.0
             .checked_add(other.0)
             .map(Self)
-            .ok_or(DomainError::Overflow)
+            .ok_or(AmountError::Overflow)
     }
 
     pub fn format(self, scale: u8) -> String {
@@ -112,17 +123,17 @@ pub struct Leg {
     pub amount: Amount,
 }
 
-pub fn validate_legs(legs: &[Leg]) -> Result<(), DomainError> {
+pub fn validate_legs(legs: &[Leg]) -> Result<(), LegsError> {
     if legs.is_empty() {
-        return Err(DomainError::EmptyLegs);
+        return Err(LegsError::Empty);
     }
 
     if legs.len() > 16 {
-        return Err(DomainError::TooManyLegs);
+        return Err(LegsError::TooMany);
     }
 
     if legs.iter().any(|leg| leg.from == leg.to) {
-        return Err(DomainError::InvalidReceiver);
+        return Err(LegsError::SameAccount);
     }
 
     Ok(())
@@ -137,7 +148,7 @@ pub fn required_approvals(legs: &[Leg]) -> BTreeSet<Uuid> {
 
     res
 }
-pub fn debit(legs: &[Leg]) -> Result<BTreeMap<(Uuid, String), Amount>, DomainError> {
+pub fn debit(legs: &[Leg]) -> Result<BTreeMap<(Uuid, String), Amount>, LegsError> {
     let mut res: BTreeMap<(Uuid, String), Amount> = BTreeMap::new();
 
     for leg in legs {
@@ -176,8 +187,14 @@ impl State {
     }
 }
 
+impl fmt::Display for State {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 impl FromStr for State {
-    type Err = DomainError;
+    type Err = UnknownValue;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
@@ -186,7 +203,7 @@ impl FromStr for State {
             "rejected" => Ok(State::Rejected),
             "cancelled" => Ok(State::Cancelled),
             "expired" => Ok(State::Expired),
-            _ => Err(DomainError::UnknownState),
+            other => Err(UnknownValue(other.to_string())),
         }
     }
 }
@@ -205,14 +222,20 @@ impl Decision {
         }
     }
 }
+impl fmt::Display for Decision {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 impl FromStr for Decision {
-    type Err = DomainError;
+    type Err = UnknownValue;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "approved" => Ok(Decision::Approved),
             "rejected" => Ok(Decision::Rejected),
-            _ => Err(DomainError::UnknownDecision),
+            other => Err(UnknownValue(other.to_string())),
         }
     }
 }
@@ -232,16 +255,16 @@ pub struct Proposal {
 }
 
 impl Proposal {
-    pub fn vote(&self, actor: Uuid, decision: Decision) -> Result<Outcome, DomainError> {
+    pub fn vote(&self, actor: Uuid, decision: Decision) -> Result<Outcome, ProposalError> {
         if self.state != State::Pending {
-            return Err(DomainError::NotPending(self.state));
+            return Err(ProposalError::NotPending(self.state));
         }
 
         if !self.required.contains(&actor) {
-            return Err(DomainError::WrongActor);
+            return Err(ProposalError::WrongActor);
         }
         if self.approved.contains(&actor) {
-            return Err(DomainError::AlreadyDecided);
+            return Err(ProposalError::AlreadyDecided);
         }
 
         if decision == Decision::Rejected {
@@ -259,12 +282,12 @@ impl Proposal {
         Ok(Outcome::Pending)
     }
 
-    pub fn cancel(&self, actor: Uuid) -> Result<(), DomainError> {
+    pub fn cancel(&self, actor: Uuid) -> Result<(), ProposalError> {
         if self.state != State::Pending {
-            return Err(DomainError::NotPending(self.state));
+            return Err(ProposalError::NotPending(self.state));
         }
         if self.proposer != actor {
-            return Err(DomainError::WrongActor);
+            return Err(ProposalError::WrongActor);
         }
         Ok(())
     }
@@ -272,8 +295,6 @@ impl Proposal {
 
 #[cfg(test)]
 mod tests {
-    use crate::domain::DomainError::UnknownDecision;
-
     use super::*;
 
     #[test]
@@ -292,27 +313,27 @@ mod tests {
         ] {
             assert_eq!(
                 Amount::parse(text, 2),
-                Err(DomainError::InvalidFormat),
+                Err(AmountError::InvalidFormat),
                 "{text:?}"
             );
         }
         assert_eq!(
             Amount::parse("1.234", 2),
-            Err(DomainError::TooManyDecimalPlaces)
+            Err(AmountError::TooManyDecimalPlaces)
         );
         assert_eq!(
             Amount::parse("5.1", 0),
-            Err(DomainError::TooManyDecimalPlaces)
+            Err(AmountError::TooManyDecimalPlaces)
         );
-        assert_eq!(Amount::parse("0", 2), Err(DomainError::NotPositive));
-        assert_eq!(Amount::parse("0.00", 2), Err(DomainError::NotPositive));
+        assert_eq!(Amount::parse("0", 2), Err(AmountError::NotPositive));
+        assert_eq!(Amount::parse("0.00", 2), Err(AmountError::NotPositive));
         assert_eq!(
             Amount::parse("9223372036854775807", 2),
-            Err(DomainError::Overflow)
+            Err(AmountError::Overflow)
         );
         assert_eq!(
             Amount::parse("99999999999999999999", 0),
-            Err(DomainError::Overflow)
+            Err(AmountError::Overflow)
         );
     }
 
@@ -336,14 +357,14 @@ mod tests {
         assert_eq!(Amount(1).checked_add(Amount(2)), Ok(Amount(3)));
         assert_eq!(
             Amount(i64::MAX).checked_add(Amount(1)),
-            Err(DomainError::Overflow)
+            Err(AmountError::Overflow)
         );
     }
 
     #[test]
     fn minor_units_must_be_positive() {
-        assert_eq!(Amount::from_minor_units(0), Err(DomainError::NotPositive));
-        assert_eq!(Amount::from_minor_units(-5), Err(DomainError::NotPositive));
+        assert_eq!(Amount::from_minor_units(0), Err(AmountError::NotPositive));
+        assert_eq!(Amount::from_minor_units(-5), Err(AmountError::NotPositive));
         assert_eq!(Amount::from_minor_units(5).map(Amount::minor_units), Ok(5));
     }
 
@@ -411,7 +432,7 @@ mod tests {
         };
         let legs = [huge, leg(alice, bob, "USD", "1.00")];
 
-        assert_eq!(debit(&legs), Err(DomainError::Overflow));
+        assert_eq!(debit(&legs), Err(LegsError::Amount(AmountError::Overflow)));
     }
 
     #[test]
@@ -419,11 +440,11 @@ mod tests {
         let (alice, bob) = (Uuid::new_v4(), Uuid::new_v4());
         let too_many: Vec<Leg> = (0..17).map(|_| leg(alice, bob, "USD", "1.00")).collect();
 
-        assert_eq!(validate_legs(&[]), Err(DomainError::EmptyLegs));
-        assert_eq!(validate_legs(&too_many), Err(DomainError::TooManyLegs));
+        assert_eq!(validate_legs(&[]), Err(LegsError::Empty));
+        assert_eq!(validate_legs(&too_many), Err(LegsError::TooMany));
         assert_eq!(
             validate_legs(&[leg(alice, alice, "USD", "1.00")]),
-            Err(DomainError::InvalidReceiver)
+            Err(LegsError::SameAccount)
         );
         assert_eq!(
             validate_legs(&[
@@ -504,7 +525,7 @@ mod tests {
 
         assert_eq!(
             swap(alice, bob, State::Pending).vote(carol, Decision::Approved),
-            Err(DomainError::WrongActor)
+            Err(ProposalError::WrongActor)
         );
     }
 
@@ -514,7 +535,7 @@ mod tests {
 
         assert_eq!(
             swap(alice, bob, State::Pending).vote(alice, Decision::Approved),
-            Err(DomainError::AlreadyDecided)
+            Err(ProposalError::AlreadyDecided)
         );
     }
 
@@ -530,7 +551,7 @@ mod tests {
         ] {
             assert_eq!(
                 swap(alice, bob, state).vote(bob, Decision::Approved),
-                Err(DomainError::NotPending(state))
+                Err(ProposalError::NotPending(state))
             );
         }
     }
@@ -542,11 +563,11 @@ mod tests {
         assert_eq!(swap(alice, bob, State::Pending).cancel(alice), Ok(()));
         assert_eq!(
             swap(alice, bob, State::Pending).cancel(bob),
-            Err(DomainError::WrongActor)
+            Err(ProposalError::WrongActor)
         );
         assert_eq!(
             swap(alice, bob, State::Settled).cancel(alice),
-            Err(DomainError::NotPending(State::Settled))
+            Err(ProposalError::NotPending(State::Settled))
         );
     }
     #[test]
@@ -564,7 +585,7 @@ mod tests {
         assert_eq!(State::from_str("rejected"), Ok(State::Rejected));
         assert_eq!(State::from_str("cancelled"), Ok(State::Cancelled));
         assert_eq!(State::from_str("expired"), Ok(State::Expired));
-        assert_eq!(State::from_str("abc"), Err(DomainError::UnknownState));
+        assert_eq!(State::from_str("abc"), Err(UnknownValue("abc".into())));
     }
 
     #[test]
@@ -577,6 +598,6 @@ mod tests {
     fn decision_as_from_happy() {
         assert_eq!(Decision::from_str("approved"), Ok(Decision::Approved));
         assert_eq!(Decision::from_str("rejected"), Ok(Decision::Rejected));
-        assert_eq!(Decision::from_str("abc"), Err(DomainError::UnknownDecision));
+        assert_eq!(Decision::from_str("abc"), Err(UnknownValue("abc".into())));
     }
 }
