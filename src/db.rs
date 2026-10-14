@@ -525,3 +525,17 @@ pub async fn select_outbox(pool: &PgPool, account: Uuid) -> Result<Vec<Uuid>, sq
 
     Ok(rows.into_iter().map(|row| row.id).collect())
 }
+
+pub async fn expire_due(pool: &PgPool) -> Result<u64, sqlx::Error> {
+    let result = sqlx::query!(
+        r#"
+        UPDATE proposals
+        SET state = 'expired', closed_at = expires_at
+        WHERE state = 'pending' AND expires_at <= now()
+        "#
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected())
+}

@@ -265,6 +265,37 @@ async fn expired_offer_releases_the_hold(pool: PgPool) {
 }
 
 #[sqlx::test]
+async fn sweeper_closes_expired_rows(pool: PgPool) {
+    let app = spawn_app(pool.clone()).await;
+    let (alice, bob) = alice_and_bob(&app).await;
+    let proposal: Value = app
+        .propose(
+            &alice.key,
+            json!({
+                "expires_in_secs": 1,
+                "legs": [leg(&alice.id, &bob.id, "USD", "100"), leg(&bob.id, &alice.id, "XAU", "1.5")]
+            }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    let id = uuid::Uuid::parse_str(proposal["id"].as_str().unwrap()).unwrap();
+
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+
+    let row = sqlx::query!(
+        "SELECT state, closed_at, expires_at FROM proposals WHERE id = $1",
+        id
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(row.state, "expired");
+    assert_eq!(row.closed_at, Some(row.expires_at));
+}
+
+#[sqlx::test]
 async fn held_funds_cannot_be_promised_twice(pool: PgPool) {
     let app = spawn_app(pool).await;
     let (alice, bob) = alice_and_bob(&app).await;

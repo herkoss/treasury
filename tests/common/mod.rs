@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use std::time::Duration;
+
 use reqwest::{Client, Method, RequestBuilder, Response};
 use serde_json::{json, Value};
 use sqlx::PgPool;
@@ -162,6 +164,7 @@ pub async fn spawn_app(pool: PgPool) -> TestApp {
     let hash = key_hash(&key);
     treasury::db::ensure_issuer(&pool, &hash).await.unwrap();
 
+    tokio::spawn(treasury::sweeper::run(pool, Duration::from_millis(200)));
     tokio::spawn(async move { treasury::http::serve(listener, state).await.unwrap() });
 
     TestApp {

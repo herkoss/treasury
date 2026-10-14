@@ -1,5 +1,5 @@
 use clap::Parser;
-use std::process;
+use std::{process, time::Duration};
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 
@@ -12,6 +12,8 @@ struct Args {
     database_url: String,
     #[arg(long, env = "OPERATOR_KEY")]
     operator_key: String,
+    #[arg(long, env = "SWEEP_INTERVAL_SECS", default_value = "5")]
+    sweep_interval_secs: u64,
 }
 
 #[tokio::main]
@@ -33,6 +35,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let pool = treasury::db::connect(&args.database_url).await?;
     let hash = treasury::utils::key_hash(args.operator_key.as_str());
     treasury::db::ensure_issuer(&pool, &hash).await?;
+
+    tokio::spawn(treasury::sweeper::run(
+        pool.clone(),
+        Duration::from_secs(args.sweep_interval_secs),
+    ));
 
     let state = treasury::http::AppState { pool };
 
