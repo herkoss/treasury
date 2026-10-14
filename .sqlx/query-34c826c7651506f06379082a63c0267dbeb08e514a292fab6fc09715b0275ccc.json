@@ -1,0 +1,54 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        WITH posted AS (\n            SELECT asset_code, SUM(amount) AS amount\n            FROM entries\n            WHERE account_id = $1\n            GROUP BY asset_code\n        ),\n        held AS (\n            SELECT l.asset_code, SUM(l.amount) AS amount\n            FROM legs l\n            JOIN proposals p ON p.id = l.proposal_id\n            JOIN approvals a ON a.proposal_id = l.proposal_id AND a.account_id = l.from_id\n            WHERE l.from_id = $1\n              AND a.decision = 'approved'\n              AND p.state = 'pending'\n              AND p.expires_at > now()\n            GROUP BY l.asset_code\n        )\n        SELECT a.code AS asset, a.scale,\n               COALESCE(posted.amount, 0)::BIGINT AS \"posted!\",\n               COALESCE(held.amount, 0)::BIGINT AS \"on_hold!\"\n        FROM assets a\n        LEFT JOIN posted ON posted.asset_code = a.code\n        LEFT JOIN held ON held.asset_code = a.code\n        WHERE posted.asset_code IS NOT NULL OR held.asset_code IS NOT NULL\n        ORDER BY a.code\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "asset",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "assets",
+            "name": "code"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "scale",
+        "type_info": "Int2",
+        "origin": {
+          "Table": {
+            "table": "assets",
+            "name": "scale"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "posted!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 3,
+        "name": "on_hold!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      null,
+      null
+    ]
+  },
+  "hash": "34c826c7651506f06379082a63c0267dbeb08e514a292fab6fc09715b0275ccc"
+}

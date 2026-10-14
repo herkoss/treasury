@@ -15,5 +15,18 @@ services:
       timeout: 2s
       retries: 15
 
+  app:
+    build: .
+    image: treasury
+    ports:
+      - "8888:8888"
+    environment:
+      DATABASE_URL: postgres://treasury:treasury@db:5432/treasury
+      OPERATOR_KEY: ${OPERATOR_KEY:?set OPERATOR_KEY in .env}
+      RUST_LOG: info
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   pgdata:

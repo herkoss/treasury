@@ -1,0 +1,76 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT l.from_id, l.to_id, l.asset_code, l.amount, a.scale\n        FROM legs l\n        JOIN assets a ON a.code = l.asset_code\n        WHERE l.proposal_id = $1\n        ORDER BY l.position\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "from_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "legs",
+            "name": "from_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "to_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "legs",
+            "name": "to_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "asset_code",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "legs",
+            "name": "asset_code"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "amount",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "legs",
+            "name": "amount"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "scale",
+        "type_info": "Int2",
+        "origin": {
+          "Table": {
+            "table": "assets",
+            "name": "scale"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c0735dd9cad530e5cd6c23198f72edda768d34c5add350e2ef4df39de1012337"
+}

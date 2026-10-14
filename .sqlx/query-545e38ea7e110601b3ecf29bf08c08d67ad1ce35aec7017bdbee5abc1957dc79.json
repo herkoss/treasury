@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE proposals\n        SET state = $2, closed_at = now()\n        WHERE id = $1 AND state = 'pending'\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "545e38ea7e110601b3ecf29bf08c08d67ad1ce35aec7017bdbee5abc1957dc79"
+}

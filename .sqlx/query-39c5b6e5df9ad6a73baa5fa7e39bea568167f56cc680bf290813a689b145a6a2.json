@@ -1,0 +1,33 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT asset_code, COALESCE(SUM(amount), 0)::BIGINT AS \"total!\" FROM entries GROUP BY asset_code",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "asset_code",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "entries",
+            "name": "asset_code"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "total!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "39c5b6e5df9ad6a73baa5fa7e39bea568167f56cc680bf290813a689b145a6a2"
+}
