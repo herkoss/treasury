@@ -88,9 +88,7 @@ pub async fn create_asset(
         return Err(Error::Forbidden);
     }
 
-    let asset = db::insert_asset(&pool, create_asset)
-        .await
-        .map_err(|_| Error::AlreadyExists("asset"))?;
+    let asset = db::insert_asset(&pool, create_asset).await?;
 
     Ok((StatusCode::CREATED, Json(asset)))
 }

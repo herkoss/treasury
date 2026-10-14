@@ -10,7 +10,6 @@ clap = { version = "4", features = ["derive", "env"] }
 dotenvy = "0.15.7"
 thiserror = "2"
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres", "macros", "migrate", "uuid", "time"] }
-time = { version = "0.3", features = ["serde-human-readable"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
 tower-http = { version = "0.7", features = ["trace"] }
 tracing = "0.1"
@@ -21,6 +20,7 @@ serde = { version = "1.0.229", features = ["derive"] }
 sha2 = "0.11.1"
 rand = "0.10.3"
 hex = "0.4.3"
+time = { version = "0.3.55", features = ["serde-well-known"] }
 
 [dev-dependencies]
 reqwest = { version = "0.13", default-features = false, features = ["json"] }
