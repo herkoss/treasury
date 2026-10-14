@@ -24,3 +24,4 @@ time = { version = "0.3.55", features = ["serde-well-known"] }
 
 [dev-dependencies]
 reqwest = { version = "0.13", default-features = false, features = ["json"] }
+tokio = { version = "1", features = ["sync", "time"] }
