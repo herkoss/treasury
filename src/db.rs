@@ -69,3 +69,79 @@ pub async fn insert_asset(pool: &PgPool, asset: CreateAsset) -> TreasuryResult<A
         other => Error::Db(other),
     })
 }
+
+pub async fn select_assets(pool: &PgPool) -> Result<Vec<Asset>, sqlx::Error> {
+    sqlx::query_as!(
+        Asset,
+        r#"
+        SELECT code, name, scale, archived_at, created_at
+        FROM assets
+        ORDER BY code
+        "#,
+    )
+    .fetch_all(pool)
+    .await
+}
+
+pub async fn select_asset_by_code(pool: &PgPool, code: &str) -> Result<Option<Asset>, sqlx::Error> {
+    sqlx::query_as!(
+        Asset,
+        r#"
+        SELECT code, name, scale, archived_at, created_at
+        FROM assets
+        WHERE code = $1
+        "#,
+        code
+    )
+    .fetch_optional(pool)
+    .await
+}
+
+pub async fn update_asset_name(
+    pool: &PgPool,
+    code: &str,
+    name: &str,
+) -> Result<Option<Asset>, sqlx::Error> {
+    sqlx::query_as!(
+        Asset,
+        r#"
+        UPDATE assets
+        SET name = $2
+        WHERE code = $1
+        RETURNING code, name, scale, archived_at, created_at
+        "#,
+        code,
+        name
+    )
+    .fetch_optional(pool)
+    .await
+}
+
+pub async fn archive_asset(pool: &PgPool, code: &str) -> Result<Option<Asset>, sqlx::Error> {
+    sqlx::query_as!(
+        Asset,
+        r#"
+        UPDATE assets
+        SET archived_at = now()
+        WHERE code = $1
+          AND archived_at IS NULL
+          AND NOT EXISTS (
+              SELECT 1 FROM entries
+              WHERE asset_code = $1
+              GROUP BY account_id
+              HAVING SUM(amount) <> 0
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM legs l
+              JOIN proposals p ON p.id = l.proposal_id
+              WHERE l.asset_code = $1
+                AND p.state = 'pending'
+                AND p.expires_at > now()
+          )
+        RETURNING code, name, scale, archived_at, created_at
+        "#,
+        code,
+    )
+    .fetch_optional(pool)
+    .await
+}

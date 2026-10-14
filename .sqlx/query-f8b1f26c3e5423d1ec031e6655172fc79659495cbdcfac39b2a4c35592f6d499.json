@@ -1,0 +1,76 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE assets\n        SET archived_at = now()\n        WHERE code = $1\n          AND archived_at IS NULL\n          AND NOT EXISTS (\n              SELECT 1 FROM entries\n              WHERE asset_code = $1\n              GROUP BY account_id\n              HAVING SUM(amount) <> 0\n          )\n          AND NOT EXISTS (\n              SELECT 1 FROM legs l\n              JOIN proposals p ON p.id = l.proposal_id\n              WHERE l.asset_code = $1\n                AND p.state = 'pending'\n                AND p.expires_at > now()\n          )\n        RETURNING code, name, scale, archived_at, created_at\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "code",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "assets",
+            "name": "code"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "assets",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "scale",
+        "type_info": "Int2",
+        "origin": {
+          "Table": {
+            "table": "assets",
+            "name": "scale"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "archived_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "assets",
+            "name": "archived_at"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "assets",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "f8b1f26c3e5423d1ec031e6655172fc79659495cbdcfac39b2a4c35592f6d499"
+}

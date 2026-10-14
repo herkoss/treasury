@@ -32,6 +32,10 @@ pub enum Error {
     AlreadyExists(&'static str),
     #[error("insufficient available balance of {0}")]
     Insufficient(String),
+    #[error("{0} is in use or already archived")]
+    InUse(&'static str),
+    #[error("{0} is invalid")]
+    InvalidAsset(&'static str),
 }
 
 impl Error {
@@ -51,6 +55,8 @@ impl Error {
             Self::Forbidden => StatusCode::FORBIDDEN,
             Self::AlreadyExists(_) => StatusCode::CONFLICT,
             Self::Insufficient(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::InUse(_) => StatusCode::CONFLICT,
+            Self::InvalidAsset(_) => StatusCode::UNPROCESSABLE_ENTITY,
         }
     }
 }

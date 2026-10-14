@@ -26,6 +26,21 @@ impl TestApp {
             .await
             .unwrap()
     }
+    async fn get_assets(&self) -> Response {
+        self.request(Method::GET, "/assets")
+            .header("x-account-key", &self.operator_key)
+            .send()
+            .await
+            .unwrap()
+    }
+
+    async fn get_asset(&self, code: &str) -> Response {
+        self.request(Method::GET, &format!("/assets/{code}"))
+            .header("x-account-key", &self.operator_key)
+            .send()
+            .await
+            .unwrap()
+    }
 }
 
 async fn spawn_app(pool: PgPool) -> TestApp {
@@ -95,4 +110,54 @@ async fn create_asset_twice(pool: PgPool) {
     assert_eq!(response.status(), 409);
     let body: serde_json::Value = response.json().await.unwrap();
     assert_eq!(body["detail"], "asset already exists");
+}
+
+#[sqlx::test]
+async fn get_assets(pool: PgPool) {
+    let app = spawn_app(pool).await;
+    let assets_resp = app.create_asset("BTC", 8).await;
+    let asset: serde_json::Value = assets_resp.json().await.unwrap();
+
+    let response = app.get_assets().await;
+    let assets: serde_json::Value = response.json().await.unwrap();
+
+    assert_eq!(serde_json::json!([asset]), assets);
+}
+
+#[sqlx::test]
+async fn get_assets_sorted_by_code(pool: PgPool) {
+    let app = spawn_app(pool).await;
+    let eth: serde_json::Value = app.create_asset("ETH", 6).await.json().await.unwrap();
+    let btc: serde_json::Value = app.create_asset("BTC", 8).await.json().await.unwrap();
+
+    let assets: serde_json::Value = app.get_assets().await.json().await.unwrap();
+
+    assert_eq!(assets, serde_json::json!([btc, eth]));
+}
+
+#[sqlx::test]
+async fn get_assets_without_key(pool: PgPool) {
+    let app = spawn_app(pool).await;
+    let response = app.request(Method::GET, "/assets").send().await.unwrap();
+    assert_eq!(response.status(), 401);
+}
+
+#[sqlx::test]
+async fn get_asset_by_code(pool: PgPool) {
+    let app = spawn_app(pool).await;
+    let created: serde_json::Value = app.create_asset("BTC", 8).await.json().await.unwrap();
+
+    let response = app.get_asset("BTC").await;
+    assert_eq!(response.status(), 200);
+    let asset: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(asset, created);
+}
+
+#[sqlx::test]
+async fn get_unknown_asset(pool: PgPool) {
+    let app = spawn_app(pool).await;
+    let response = app.get_asset("BTC").await;
+    assert_eq!(response.status(), 404);
+    let body: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(body["detail"], "asset not found");
 }
