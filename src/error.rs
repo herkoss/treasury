@@ -6,7 +6,7 @@ use axum::{
 };
 use serde::Serialize;
 
-use crate::domain::{AmountError, LegsError, ProposalError, UnknownValue};
+use crate::domain::{AmountError, AssetError, LegsError, ProposalError, UnknownValue};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -34,8 +34,10 @@ pub enum Error {
     Insufficient(String),
     #[error("{0} is in use or already archived")]
     InUse(&'static str),
-    #[error("{0} is invalid")]
-    InvalidAsset(&'static str),
+    #[error("invalid asset: {0}")]
+    Asset(#[from] AssetError),
+    #[error("invalid account {0:?}")]
+    InvalidAccount(String),
 }
 
 impl Error {
@@ -56,7 +58,8 @@ impl Error {
             Self::AlreadyExists(_) => StatusCode::CONFLICT,
             Self::Insufficient(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::InUse(_) => StatusCode::CONFLICT,
-            Self::InvalidAsset(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::Asset(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::InvalidAccount(_) => StatusCode::UNPROCESSABLE_ENTITY,
         }
     }
 }

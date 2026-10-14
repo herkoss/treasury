@@ -4,7 +4,7 @@ use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
-#[command(author, version, about = "Axum web server")]
+#[command(author, version, about = "Asset ledger with consent-based settlement")]
 struct Args {
     #[arg(long, env = "SERVER_ADDR", default_value = "127.0.0.1:8888")]
     server_addr: String,

@@ -1,21 +1,19 @@
 use axum::{
-    extract::{FromRef, FromRequestParts, Path, Request, State},
+    extract::{FromRef, FromRequestParts, Request},
     http::{request::Parts, StatusCode},
     routing::{get, post},
-    Json, Router,
+    Router,
 };
-use serde::Deserialize;
 use sqlx::PgPool;
 use tokio::net::TcpListener;
 use tower_http::trace::TraceLayer;
 use uuid::Uuid;
 
-use crate::{
-    db,
-    error::{Error, Result as TreasuryResult},
-    models::{Account, Asset},
-    utils,
-};
+use crate::{db, error::Error, models::Account, utils};
+
+pub mod accounts;
+pub mod assets;
+pub mod transactions;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -59,8 +57,23 @@ where
 pub async fn serve(listener: TcpListener, state: AppState) -> std::io::Result<()> {
     let router = Router::new()
         .route("/health", get(health_check))
-        .route("/assets", post(create_asset).get(get_assets))
-        .route("/assets/{code}", get(get_asset))
+        .route("/assets", get(assets::list).post(assets::create))
+        .route(
+            "/assets/{code}",
+            get(assets::read)
+                .patch(assets::update)
+                .delete(assets::archive),
+        )
+        .route("/accounts", post(accounts::create))
+        .route("/accounts/{id}/balances", get(accounts::balances))
+        .route("/accounts/{id}/entries", get(accounts::entries))
+        .route("/accounts/{id}/inbox", get(transactions::inbox))
+        .route("/accounts/{id}/outbox", get(transactions::outbox))
+        .route("/transactions", post(transactions::create))
+        .route("/transactions/{id}", get(transactions::read))
+        .route("/transactions/{id}/approve", post(transactions::approve))
+        .route("/transactions/{id}/reject", post(transactions::reject))
+        .route("/transactions/{id}/cancel", post(transactions::cancel))
         .layer(TraceLayer::new_for_http().make_span_with(|request: &Request| {
             tracing::info_span!("request", method = %request.method(), uri = %request.uri(), request_id = %Uuid::new_v4())
         }))
@@ -73,44 +86,17 @@ async fn health_check() -> StatusCode {
     StatusCode::OK
 }
 
-#[derive(Deserialize)]
-pub struct CreateAsset {
-    pub code: String,
-    pub name: String,
-    pub scale: u8,
-}
-
-pub async fn create_asset(
-    Actor(actor): Actor,
-    State(pool): State<PgPool>,
-    Json(create_asset): Json<CreateAsset>,
-) -> TreasuryResult<(StatusCode, Json<Asset>)> {
-    if !actor.is_issuer {
-        return Err(Error::Forbidden);
+pub fn parse_account(text: &str) -> Result<Uuid, Error> {
+    if text == "@issuer" {
+        return Ok(Uuid::nil());
     }
-
-    let asset = db::insert_asset(&pool, create_asset).await?;
-
-    Ok((StatusCode::CREATED, Json(asset)))
+    Uuid::parse_str(text).map_err(|_| Error::InvalidAccount(text.to_string()))
 }
 
-pub async fn get_assets(
-    Actor(_actor): Actor,
-    State(pool): State<PgPool>,
-) -> TreasuryResult<Json<Vec<Asset>>> {
-    let assets = db::select_assets(&pool).await?;
-
-    Ok(Json(assets))
-}
-
-pub async fn get_asset(
-    Actor(_actor): Actor,
-    State(pool): State<PgPool>,
-    Path(code): Path<String>,
-) -> TreasuryResult<Json<Asset>> {
-    let asset = db::select_asset_by_code(&pool, code.as_str())
-        .await?
-        .ok_or(Error::NotFound("asset"))?;
-
-    Ok(Json(asset))
+pub fn account_ref(id: Uuid) -> String {
+    if id.is_nil() {
+        "@issuer".to_string()
+    } else {
+        id.to_string()
+    }
 }
