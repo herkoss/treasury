@@ -68,3 +68,9 @@ pub struct EntryRow {
 pub fn scale(value: i16) -> u8 {
     u8::try_from(value).expect("asset scale is checked by the schema")
 }
+
+pub struct IdempotencyRow {
+    pub fingerprint: Vec<u8>,
+    pub status: Option<i32>,
+    pub body: Option<Vec<u8>>,
+}

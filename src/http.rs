@@ -1,6 +1,7 @@
 use axum::{
     extract::{FromRef, FromRequestParts, Request},
     http::{request::Parts, StatusCode},
+    middleware,
     routing::{get, post},
     Router,
 };
@@ -13,6 +14,7 @@ use crate::{db, error::Error, models::Account, utils};
 
 pub mod accounts;
 pub mod assets;
+pub mod idempotency;
 pub mod transactions;
 
 #[derive(Clone)]
@@ -74,6 +76,10 @@ pub async fn serve(listener: TcpListener, state: AppState) -> std::io::Result<()
         .route("/transactions/{id}/approve", post(transactions::approve))
         .route("/transactions/{id}/reject", post(transactions::reject))
         .route("/transactions/{id}/cancel", post(transactions::cancel))
+        .layer(middleware::from_fn_with_state(
+            state.pool.clone(),
+            idempotency::layer,
+        ))
         .layer(TraceLayer::new_for_http().make_span_with(|request: &Request| {
             tracing::info_span!("request", method = %request.method(), uri = %request.uri(), request_id = %Uuid::new_v4())
         }))

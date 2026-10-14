@@ -38,6 +38,12 @@ pub enum Error {
     Asset(#[from] AssetError),
     #[error("invalid account {0:?}")]
     InvalidAccount(String),
+    #[error("{0}")]
+    BadRequest(&'static str),
+    #[error("idempotency key was used with a different request")]
+    KeyReused,
+    #[error("a request with this idempotency key is in progress")]
+    InProgress,
 }
 
 impl Error {
@@ -60,6 +66,9 @@ impl Error {
             Self::InUse(_) => StatusCode::CONFLICT,
             Self::Asset(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::InvalidAccount(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::BadRequest(_) => StatusCode::BAD_REQUEST,
+            Self::KeyReused => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::InProgress => StatusCode::CONFLICT,
         }
     }
 }

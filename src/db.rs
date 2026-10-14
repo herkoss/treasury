@@ -5,7 +5,9 @@ use uuid::Uuid;
 use crate::{
     domain::{Decision, Leg, State},
     error::{Error, Result as TreasuryResult},
-    models::{Account, ApprovalRow, Asset, BalanceRow, EntryRow, LegRow, ProposalRow},
+    models::{
+        Account, ApprovalRow, Asset, BalanceRow, EntryRow, IdempotencyRow, LegRow, ProposalRow,
+    },
 };
 
 pub async fn connect(url: &str) -> Result<PgPool, sqlx::Error> {
@@ -538,4 +540,91 @@ pub async fn expire_due(pool: &PgPool) -> Result<u64, sqlx::Error> {
     .await?;
 
     Ok(result.rows_affected())
+}
+
+pub async fn claim_idempotency_key(
+    pool: &PgPool,
+    account: Uuid,
+    key: &str,
+    fingerprint: &[u8],
+) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query!(
+        r#"
+        INSERT INTO idempotency_keys (account_id, key, fingerprint)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (account_id, key) DO UPDATE
+            SET fingerprint = EXCLUDED.fingerprint, status = NULL, body = NULL, created_at = now()
+            WHERE idempotency_keys.status IS NULL
+              AND idempotency_keys.created_at < now() - interval '1 minute'
+        "#,
+        account,
+        key,
+        fingerprint
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected() == 1)
+}
+
+pub async fn select_idempotency_key(
+    pool: &PgPool,
+    account: Uuid,
+    key: &str,
+) -> Result<Option<IdempotencyRow>, sqlx::Error> {
+    sqlx::query_as!(
+        IdempotencyRow,
+        r#"
+        SELECT fingerprint, status, body
+        FROM idempotency_keys
+        WHERE account_id = $1 AND key = $2
+        "#,
+        account,
+        key
+    )
+    .fetch_optional(pool)
+    .await
+}
+
+pub async fn complete_idempotency_key(
+    pool: &PgPool,
+    account: Uuid,
+    key: &str,
+    status: i32,
+    body: &[u8],
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"
+        UPDATE idempotency_keys
+        SET status = $3, body = $4
+        WHERE account_id = $1 AND key = $2
+        "#,
+        account,
+        key,
+        status,
+        body
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+pub async fn release_idempotency_key(
+    pool: &PgPool,
+    account: Uuid,
+    key: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"
+        DELETE FROM idempotency_keys
+        WHERE account_id = $1 AND key = $2
+        "#,
+        account,
+        key
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
 }

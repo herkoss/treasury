@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        DELETE FROM idempotency_keys\n        WHERE account_id = $1 AND key = $2\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "12e3e387b07658164a010adb272cdac57265d7da2170901211262536849d8f1f"
+}
