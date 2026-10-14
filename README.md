@@ -24,6 +24,16 @@ Migrations run at start-up. The `@issuer` account is created (or its key rotated
 Every request except `GET /health` carries `X-Account-Key`. The operator key acts as `@issuer`;
 an account key, returned once by `POST /accounts`, acts as that account.
 
+The OpenAPI document is at `/openapi.json`, an interactive page at `/docs`.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `DATABASE_URL` | | PostgreSQL connection string |
+| `OPERATOR_KEY` | | the `@issuer` key |
+| `SERVER_ADDR` | `127.0.0.1:8888` | listen address |
+| `SWEEP_INTERVAL_SECS` | `5` | how often expired proposals are closed in the database |
+| `RUST_LOG` | `info` | tracing filter |
+
 ## API
 
 | Method | Path | Who | What |
@@ -46,6 +56,12 @@ an account key, returned once by `POST /accounts`, acts as that account.
 
 `{id}` in account paths is a UUID or `@issuer`. Amounts are decimal strings, parsed and
 rendered with the asset's `scale`. Errors are `application/problem+json`.
+
+A mutating request may carry `Idempotency-Key`. The first request with a key is executed and
+its successful response is stored; a replay with the same key and the same body returns that
+response again, so a client that lost the answer to `POST /transactions` can retry without
+creating a second proposal. The same key with a different body is `422`; a replay while the
+first request is still running is `409`. Keys are scoped to the acting account.
 
 One request shape covers deposit, withdrawal, transfer and swap; only the legs differ:
 
@@ -147,9 +163,17 @@ account is the nil UUID and the only row with `is_issuer`, enforced by a partial
 "a hold is released exactly once" (I6) is true by construction: it disappears the instant the
 proposal leaves `pending`, whatever the reason.
 
-**Expiry is lazy.** No background sweeper. Every query that cares reads
-`state = 'pending' AND expires_at > now()`, and the API reports such a proposal as `expired`.
-A vote on it is refused with `409`.
+**Expiry needs no coordination.** Every query that cares reads
+`state = 'pending' AND expires_at > now()`, and the API reports such a proposal as `expired`
+the instant its TTL passes, whatever the row still says. A vote on it is refused with `409`.
+A background sweeper (`src/sweeper.rs`) then closes the row in the database every
+`SWEEP_INTERVAL_SECS`, so the table agrees with the API; nothing depends on it running.
+
+**Idempotency.** `idempotency_keys` holds `(account, key) → fingerprint, status, body`. The
+middleware claims the key with `INSERT … ON CONFLICT DO NOTHING` before the handler runs, so two
+concurrent requests with the same key cannot both execute; it stores only successful responses
+and releases the key on failure, so a `422` can be retried once the cause is fixed. A claim
+left behind by a crash is reclaimable after a minute.
 
 **Settlement is one database transaction.** Lock the proposal row, lock every account in the
 legs with `SELECT … FOR UPDATE ORDER BY id` (a fixed order, so two settlements can never
@@ -174,8 +198,8 @@ bearer token, so transport security is TLS's job, not the application's.
 * `i64` instead of `i128` (PostgreSQL `BIGINT`), and a state enum instead of a typestate: the
   state machine is four checks, a typestate would have fought the repository layer.
 * A single crate with an isolated `domain` module instead of a separate domain crate.
-* Not done: `Idempotency-Key`, property tests, OpenAPI. The concurrency tests are plain
-  integration tests, not a dedicated stress harness.
+* Not done: property tests. The concurrency tests are plain integration tests, not a dedicated
+  stress harness.
 * Demo step 5: Alice re-voting on her own offer is a replay, so it is `409`, consistent with
   step 8. A third account voting gets the `403`.
 
@@ -192,7 +216,7 @@ random port and talks to it over HTTP.
 
 `tests/transactions.rs` covers the eleven demo steps plus two races: five concurrent approvals
 of overlapping offers and five concurrent transfers that together overspend. Exactly one wins
-and `SUM(entries)` per asset stays zero (I1, I2).
+and `SUM(entries)` per asset stays zero (I1, I2). `tests/idempotency.rs` covers replays.
 
 The sqlx test harness shares twenty PostgreSQL connections between all running tests;
 `.cargo/config.toml` caps test threads at four so the suites stay under that limit.
@@ -204,8 +228,9 @@ migrations/      schema
 src/domain.rs    pure rules: Amount, legs, required approvals, the vote state machine
 src/db.rs        every SQL query, compile-time checked (.sqlx/ holds the offline cache)
 src/http.rs      router, AppState, the X-Account-Key extractor
-src/http/        handlers: assets, accounts, transactions
+src/http/        handlers: assets, accounts, transactions; idempotency middleware; OpenAPI doc
 src/error.rs     one error enum → HTTP status + problem+json
+src/sweeper.rs   closes expired proposals in the background
 src/bin/server   CLI and start-up
 tests/           integration tests against the real router and database
 ```
