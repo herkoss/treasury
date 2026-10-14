@@ -102,3 +102,28 @@ async fn get_unknown_asset(pool: PgPool) {
     let body: serde_json::Value = response.json().await.unwrap();
     assert_eq!(body["detail"], "asset not found");
 }
+
+#[sqlx::test]
+async fn openapi_is_served(pool: PgPool) {
+    let app = spawn_app(pool).await;
+
+    let response = app
+        .client
+        .get(app.url("/openapi.json"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let spec: serde_json::Value = response.json().await.unwrap();
+    assert!(spec["paths"]["/transactions"]["post"].is_object());
+    assert!(spec["paths"]["/accounts/{id}/entries"]["get"]["parameters"].is_array());
+    assert!(spec["components"]["securitySchemes"]["account_key"].is_object());
+    assert!(spec["components"]["schemas"]["ProposalView"].is_object());
+
+    let response = app.client.get(app.url("/docs")).send().await.unwrap();
+    assert_eq!(response.status(), 200);
+    assert!(response.headers()["content-type"]
+        .to_str()
+        .unwrap()
+        .starts_with("text/html"));
+}

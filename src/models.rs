@@ -1,8 +1,9 @@
 use serde::Serialize;
 use time::OffsetDateTime;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct Asset {
     pub code: String,
     pub name: String,

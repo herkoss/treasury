@@ -8,12 +8,13 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, PgPool};
 use time::{Duration, OffsetDateTime};
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{
     db,
     domain::{self, Amount, Decision, Leg, Outcome, State as ProposalState},
-    error::{Error, Result},
+    error::{Error, Problem, Result},
     models::{self, Account, ApprovalRow, LegRow, ProposalRow},
 };
 
@@ -22,7 +23,7 @@ use super::{account_ref, accounts::authorize, parse_account, Actor};
 const DEFAULT_TTL_SECS: i64 = 900;
 const MAX_TTL_SECS: i64 = 86_400;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct CreateProposal {
     #[serde(default)]
     pub memo: String,
@@ -30,7 +31,7 @@ pub struct CreateProposal {
     pub legs: Vec<LegInput>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct LegInput {
     pub from: String,
     pub to: String,
@@ -38,7 +39,7 @@ pub struct LegInput {
     pub amount: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct ProposalView {
     pub id: Uuid,
     pub state: String,
@@ -58,7 +59,7 @@ pub struct ProposalView {
     pub required_approvals: Vec<ApprovalView>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct LegView {
     pub from: String,
     pub to: String,
@@ -66,7 +67,7 @@ pub struct LegView {
     pub amount: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct ApprovalView {
     pub account: String,
     pub decision: String,
@@ -75,6 +76,19 @@ pub struct ApprovalView {
     pub at: Option<OffsetDateTime>,
 }
 
+#[utoipa::path(
+    post,
+    path = "/transactions",
+    tag = "transactions",
+    request_body = CreateProposal,
+    responses(
+        (status = 201, body = ProposalView, description = "settled at once"),
+        (status = 202, body = ProposalView, description = "waiting for approvals"),
+        (status = 404, body = Problem, description = "unknown asset or account"),
+        (status = 422, body = Problem, description = "bad legs, bad amount or insufficient balance"),
+    ),
+    security(("account_key" = []))
+)]
 pub async fn create(
     Actor(actor): Actor,
     State(pool): State<PgPool>,
@@ -137,6 +151,18 @@ pub async fn create(
     Ok((status, Json(view)))
 }
 
+#[utoipa::path(
+    get,
+    path = "/transactions/{id}",
+    tag = "transactions",
+    params(("id" = Uuid, Path)),
+    responses(
+        (status = 200, body = ProposalView),
+        (status = 403, body = Problem, description = "not a party"),
+        (status = 404, body = Problem),
+    ),
+    security(("account_key" = []))
+)]
 pub async fn read(
     Actor(actor): Actor,
     State(pool): State<PgPool>,
@@ -159,6 +185,20 @@ pub async fn read(
     Ok(Json(view))
 }
 
+#[utoipa::path(
+    post,
+    path = "/transactions/{id}/approve",
+    tag = "transactions",
+    params(("id" = Uuid, Path)),
+    responses(
+        (status = 200, body = ProposalView),
+        (status = 403, body = Problem, description = "not a debited party"),
+        (status = 404, body = Problem),
+        (status = 409, body = Problem, description = "already decided or no longer pending"),
+        (status = 422, body = Problem, description = "insufficient available balance"),
+    ),
+    security(("account_key" = []))
+)]
 pub async fn approve(
     Actor(actor): Actor,
     State(pool): State<PgPool>,
@@ -167,6 +207,19 @@ pub async fn approve(
     vote(&pool, &actor, id, Decision::Approved).await
 }
 
+#[utoipa::path(
+    post,
+    path = "/transactions/{id}/reject",
+    tag = "transactions",
+    params(("id" = Uuid, Path)),
+    responses(
+        (status = 200, body = ProposalView),
+        (status = 403, body = Problem, description = "not a debited party"),
+        (status = 404, body = Problem),
+        (status = 409, body = Problem, description = "already decided or no longer pending"),
+    ),
+    security(("account_key" = []))
+)]
 pub async fn reject(
     Actor(actor): Actor,
     State(pool): State<PgPool>,
@@ -175,6 +228,19 @@ pub async fn reject(
     vote(&pool, &actor, id, Decision::Rejected).await
 }
 
+#[utoipa::path(
+    post,
+    path = "/transactions/{id}/cancel",
+    tag = "transactions",
+    params(("id" = Uuid, Path)),
+    responses(
+        (status = 200, body = ProposalView),
+        (status = 403, body = Problem, description = "not the proposer"),
+        (status = 404, body = Problem),
+        (status = 409, body = Problem, description = "no longer pending"),
+    ),
+    security(("account_key" = []))
+)]
 pub async fn cancel(
     Actor(actor): Actor,
     State(pool): State<PgPool>,
@@ -198,6 +264,14 @@ pub async fn cancel(
     Ok(Json(view))
 }
 
+#[utoipa::path(
+    get,
+    path = "/accounts/{id}/inbox",
+    tag = "transactions",
+    params(("id" = String, Path, description = "account UUID or @issuer")),
+    responses((status = 200, body = Vec<ProposalView>), (status = 403, body = Problem)),
+    security(("account_key" = []))
+)]
 pub async fn inbox(
     Actor(actor): Actor,
     State(pool): State<PgPool>,
@@ -209,6 +283,14 @@ pub async fn inbox(
     load_views(&pool, &ids).await.map(Json)
 }
 
+#[utoipa::path(
+    get,
+    path = "/accounts/{id}/outbox",
+    tag = "transactions",
+    params(("id" = String, Path, description = "account UUID or @issuer")),
+    responses((status = 200, body = Vec<ProposalView>), (status = 403, body = Problem)),
+    security(("account_key" = []))
+)]
 pub async fn outbox(
     Actor(actor): Actor,
     State(pool): State<PgPool>,

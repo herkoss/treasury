@@ -3,11 +3,13 @@ use axum::{
     http::{request::Parts, StatusCode},
     middleware,
     routing::{get, post},
-    Router,
+    Json, Router,
 };
 use sqlx::PgPool;
 use tokio::net::TcpListener;
 use tower_http::trace::TraceLayer;
+use utoipa::OpenApi;
+use utoipa_scalar::{Scalar, Servable};
 use uuid::Uuid;
 
 use crate::{db, error::Error, models::Account, utils};
@@ -15,6 +17,7 @@ use crate::{db, error::Error, models::Account, utils};
 pub mod accounts;
 pub mod assets;
 pub mod idempotency;
+pub mod openapi;
 pub mod transactions;
 
 #[derive(Clone)]
@@ -59,6 +62,8 @@ where
 pub async fn serve(listener: TcpListener, state: AppState) -> std::io::Result<()> {
     let router = Router::new()
         .route("/health", get(health_check))
+        .route("/openapi.json", get(|| async { Json(openapi::ApiDoc::openapi()) }))
+        .merge(Scalar::with_url("/docs", openapi::ApiDoc::openapi()))
         .route("/assets", get(assets::list).post(assets::create))
         .route(
             "/assets/{code}",

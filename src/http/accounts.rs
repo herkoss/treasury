@@ -6,12 +6,13 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use time::OffsetDateTime;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::{
     db,
     domain::format_units,
-    error::{Error, Result},
+    error::{Error, Problem, Result},
     models::{self, Account},
     utils,
 };
@@ -21,19 +22,19 @@ use super::{parse_account, Actor};
 const DEFAULT_PAGE: i64 = 50;
 const MAX_PAGE: i64 = 200;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct CreateAccount {
     pub name: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct CreatedAccount {
     pub id: Uuid,
     pub name: String,
     pub key: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct Balance {
     pub asset: String,
     pub posted: String,
@@ -41,14 +42,14 @@ pub struct Balance {
     pub available: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 pub struct Page {
     #[serde(default)]
     pub after: i64,
     pub limit: Option<i64>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct Entry {
     pub id: i64,
     pub proposal_id: Uuid,
@@ -59,6 +60,17 @@ pub struct Entry {
     pub created_at: OffsetDateTime,
 }
 
+#[utoipa::path(
+    post,
+    path = "/accounts",
+    tag = "accounts",
+    request_body = CreateAccount,
+    responses(
+        (status = 201, body = CreatedAccount, description = "the key is returned only here"),
+        (status = 403, body = Problem, description = "not the issuer"),
+    ),
+    security(("account_key" = []))
+)]
 pub async fn create(
     Actor(actor): Actor,
     State(pool): State<PgPool>,
@@ -89,6 +101,14 @@ pub fn authorize(actor: &Account, account: &str) -> Result<Uuid> {
     Ok(id)
 }
 
+#[utoipa::path(
+    get,
+    path = "/accounts/{id}/balances",
+    tag = "accounts",
+    params(("id" = String, Path, description = "account UUID or @issuer")),
+    responses((status = 200, body = Vec<Balance>), (status = 403, body = Problem)),
+    security(("account_key" = []))
+)]
 pub async fn balances(
     Actor(actor): Actor,
     State(pool): State<PgPool>,
@@ -113,6 +133,14 @@ pub async fn balances(
     Ok(Json(balances))
 }
 
+#[utoipa::path(
+    get,
+    path = "/accounts/{id}/entries",
+    tag = "accounts",
+    params(("id" = String, Path, description = "account UUID or @issuer"), Page),
+    responses((status = 200, body = Vec<Entry>), (status = 403, body = Problem)),
+    security(("account_key" = []))
+)]
 pub async fn entries(
     Actor(actor): Actor,
     State(pool): State<PgPool>,

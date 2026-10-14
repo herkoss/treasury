@@ -5,6 +5,7 @@ use axum::{
     Json,
 };
 use serde::Serialize;
+use utoipa::ToSchema;
 
 use crate::domain::{AmountError, AssetError, LegsError, ProposalError, UnknownValue};
 
@@ -101,11 +102,11 @@ impl IntoResponse for Error {
     }
 }
 
-#[derive(Serialize)]
-struct Problem {
+#[derive(Serialize, ToSchema)]
+pub struct Problem {
     #[serde(rename = "type")]
-    type_: &'static str,
-    title: &'static str,
-    status: u16,
-    detail: String,
+    pub type_: &'static str,
+    pub title: &'static str,
+    pub status: u16,
+    pub detail: String,
 }

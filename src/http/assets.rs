@@ -5,28 +5,42 @@ use axum::{
 };
 use serde::Deserialize;
 use sqlx::PgPool;
+use utoipa::ToSchema;
 
 use crate::{
     db,
     domain::validate_asset,
-    error::{Error, Result},
+    error::{Error, Problem, Result},
     models::Asset,
 };
 
 use super::Actor;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct CreateAsset {
     pub code: String,
     pub name: String,
     pub scale: u8,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct UpdateAsset {
     pub name: String,
 }
 
+#[utoipa::path(
+    post,
+    path = "/assets",
+    tag = "assets",
+    request_body = CreateAsset,
+    responses(
+        (status = 201, body = Asset),
+        (status = 403, body = Problem, description = "not the issuer"),
+        (status = 409, body = Problem, description = "code already exists"),
+        (status = 422, body = Problem, description = "bad code or scale"),
+    ),
+    security(("account_key" = []))
+)]
 pub async fn create(
     Actor(actor): Actor,
     State(pool): State<PgPool>,
@@ -42,12 +56,27 @@ pub async fn create(
     Ok((StatusCode::CREATED, Json(asset)))
 }
 
+#[utoipa::path(
+    get,
+    path = "/assets",
+    tag = "assets",
+    responses((status = 200, body = Vec<Asset>)),
+    security(("account_key" = []))
+)]
 pub async fn list(Actor(_actor): Actor, State(pool): State<PgPool>) -> Result<Json<Vec<Asset>>> {
     let assets = db::select_assets(&pool).await?;
 
     Ok(Json(assets))
 }
 
+#[utoipa::path(
+    get,
+    path = "/assets/{code}",
+    tag = "assets",
+    params(("code" = String, Path)),
+    responses((status = 200, body = Asset), (status = 404, body = Problem)),
+    security(("account_key" = []))
+)]
 pub async fn read(
     Actor(_actor): Actor,
     State(pool): State<PgPool>,
@@ -60,6 +89,19 @@ pub async fn read(
     Ok(Json(asset))
 }
 
+#[utoipa::path(
+    patch,
+    path = "/assets/{code}",
+    tag = "assets",
+    params(("code" = String, Path)),
+    request_body = UpdateAsset,
+    responses(
+        (status = 200, body = Asset),
+        (status = 403, body = Problem),
+        (status = 404, body = Problem),
+    ),
+    security(("account_key" = []))
+)]
 pub async fn update(
     Actor(actor): Actor,
     State(pool): State<PgPool>,
@@ -77,6 +119,19 @@ pub async fn update(
     Ok(Json(asset))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/assets/{code}",
+    tag = "assets",
+    params(("code" = String, Path)),
+    responses(
+        (status = 200, body = Asset, description = "archived"),
+        (status = 403, body = Problem),
+        (status = 404, body = Problem),
+        (status = 409, body = Problem, description = "balances or pending offers still use it"),
+    ),
+    security(("account_key" = []))
+)]
 pub async fn archive(
     Actor(actor): Actor,
     State(pool): State<PgPool>,
