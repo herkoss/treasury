@@ -40,9 +40,48 @@ pub enum ProposalError {
     AlreadyDecided,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum AssetError {
+    #[error("code must be 1 to 12 uppercase letters or digits")]
+    Code,
+    #[error("scale must be at most {MAX_SCALE}")]
+    Scale,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("unknown value {0:?}")]
 pub struct UnknownValue(pub String);
+
+pub const MAX_SCALE: u8 = 9;
+
+pub fn validate_asset(code: &str, scale: u8) -> Result<(), AssetError> {
+    let len_ok = (1..=12).contains(&code.len());
+    let chars_ok = code
+        .bytes()
+        .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit());
+    if !len_ok || !chars_ok {
+        return Err(AssetError::Code);
+    }
+    if scale > MAX_SCALE {
+        return Err(AssetError::Scale);
+    }
+    Ok(())
+}
+
+pub fn format_units(value: i64, scale: u8) -> String {
+    let sign = if value < 0 { "-" } else { "" };
+    let abs = value.unsigned_abs();
+    if scale == 0 {
+        return format!("{sign}{abs}");
+    }
+    let factor = 10_u64.pow(u32::from(scale));
+    format!(
+        "{sign}{}.{:0width$}",
+        abs / factor,
+        abs % factor,
+        width = usize::from(scale)
+    )
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Amount(i64);
@@ -103,16 +142,7 @@ impl Amount {
     }
 
     pub fn format(self, scale: u8) -> String {
-        if scale == 0 {
-            return self.0.to_string();
-        }
-        let factor = 10_i64.pow(u32::from(scale));
-        format!(
-            "{}.{:0width$}",
-            self.0 / factor,
-            self.0 % factor,
-            width = usize::from(scale)
-        )
+        format_units(self.0, scale)
     }
 }
 
@@ -296,6 +326,30 @@ impl Proposal {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn asset_code_must_be_short_uppercase_alnum() {
+        assert_eq!(validate_asset("USD", 2), Ok(()));
+        assert_eq!(validate_asset("X1", 0), Ok(()));
+        assert_eq!(validate_asset("", 2), Err(AssetError::Code));
+        assert_eq!(validate_asset("usd", 2), Err(AssetError::Code));
+        assert_eq!(validate_asset("TOOLONGASSETCODE", 2), Err(AssetError::Code));
+        assert_eq!(validate_asset("US-D", 2), Err(AssetError::Code));
+    }
+
+    #[test]
+    fn asset_scale_is_capped() {
+        assert_eq!(validate_asset("XAU", 9), Ok(()));
+        assert_eq!(validate_asset("XAU", 10), Err(AssetError::Scale));
+    }
+
+    #[test]
+    fn units_format_with_sign_and_padding() {
+        assert_eq!(format_units(0, 2), "0.00");
+        assert_eq!(format_units(5, 2), "0.05");
+        assert_eq!(format_units(-150, 2), "-1.50");
+        assert_eq!(format_units(-7, 0), "-7");
+    }
 
     #[test]
     fn parses_with_scale() {
