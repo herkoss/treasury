@@ -79,6 +79,36 @@ One request shape covers deposit, withdrawal, transfer and swap; only the legs d
 Required approvals are derived: the distinct `from` accounts. The proposer is approved
 implicitly, so a plain transfer settles in one call and a swap waits for the other side.
 
+## A swap, step by step
+
+```mermaid
+sequenceDiagram
+    participant A as Alice
+    participant T as treasury
+    participant B as Bob
+    A->>T: POST /transactions<br/>100 USD to Bob, 1.5 XAU to Alice
+    Note over T: lock Alice and Bob rows<br/>check Alice's available USD<br/>record Alice's approval
+    T-->>A: 202 pending<br/>Alice: 100 USD on hold
+    B->>T: GET /accounts/{bob}/inbox
+    T-->>B: the offer: Alice approved, Bob pending
+    alt Bob approves
+        B->>T: POST /transactions/{id}/approve
+        Note over T: lock the proposal row<br/>lock Alice and Bob rows<br/>check Bob's available XAU<br/>four journal entries in one statement
+        T-->>B: 200 settled
+        Note over A,B: Alice -100 USD +1.5 XAU, Bob +100 USD -1.5 XAU
+    else Bob rejects, Alice cancels, or the TTL passes
+        T-->>A: hold released, nothing moved
+    end
+```
+
+The same flow can be clicked through in Postman or watched in a terminal:
+
+* `postman/treasury.postman_collection.json`: five folders, every request stores the ids and
+  keys the next one needs and asserts the balances it expects. Set `operatorKey` to the value
+  of `OPERATOR_KEY` and run the collection top to bottom.
+* `scripts/demo.sh`: the walkthrough below with both accounts' balances printed after every
+  step. Needs `curl` and `jq`.
+
 ## Walkthrough
 
 The demo script from the proposal, as `curl`. `jq` is used only to pull ids and keys out of
@@ -233,4 +263,6 @@ src/error.rs     one error enum → HTTP status + problem+json
 src/sweeper.rs   closes expired proposals in the background
 src/bin/server   CLI and start-up
 tests/           integration tests against the real router and database
+postman/         the walkthrough as a Postman collection with assertions
+scripts/demo.sh  the walkthrough in a terminal, balances after every step
 ```
