@@ -2,8 +2,10 @@ mod common;
 
 use common::*;
 use reqwest::Method;
-use serde_json::Value;
+use serde_json::{json, Value};
 use sqlx::PgPool;
+use treasury::utils::fingerprint;
+use uuid::Uuid;
 
 #[sqlx::test]
 async fn replayed_transfer_runs_once(pool: PgPool) {
@@ -156,4 +158,104 @@ async fn replayed_vote_is_not_a_conflict(pool: PgPool) {
 
     let bob_xau = balance(&app.balances(&bob.key, &bob.id).await, "XAU").clone();
     assert_eq!(bob_xau["available"], "8.500");
+}
+
+#[sqlx::test]
+async fn replayed_creations_run_once(pool: PgPool) {
+    let app = spawn_app(pool).await;
+
+    let mut assets = Vec::new();
+    let mut accounts = Vec::new();
+    for _ in 0..2 {
+        let asset = app
+            .as_account(&app.operator_key, Method::POST, "/assets")
+            .header("idempotency-key", "usd")
+            .json(&json!({ "code": "USD", "name": "US Dollar", "scale": 2 }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(asset.status(), 201);
+        assets.push(asset.json::<Value>().await.unwrap());
+
+        let account = app
+            .as_account(&app.operator_key, Method::POST, "/accounts")
+            .header("idempotency-key", "alice")
+            .json(&json!({ "name": "alice" }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(account.status(), 201);
+        accounts.push(account.json::<Value>().await.unwrap());
+    }
+    assert_eq!(assets[0], assets[1]);
+    assert_eq!(accounts[0], accounts[1]);
+
+    let listed: Value = app.get_assets().await.json().await.unwrap();
+    assert_eq!(listed.as_array().unwrap().len(), 1);
+}
+
+#[sqlx::test]
+async fn fresh_claim_is_in_progress(pool: PgPool) {
+    let app = spawn_app(pool.clone()).await;
+    let (alice, bob) = alice_and_bob(&app).await;
+    let body = legs([leg(&alice.id, &bob.id, "USD", "100")]);
+    claim(&pool, &alice.id, "k1", &body, "0 seconds").await;
+
+    let response = app
+        .as_account(&alice.key, Method::POST, "/transactions")
+        .header("idempotency-key", "k1")
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 409);
+    let problem: Value = response.json().await.unwrap();
+    assert_eq!(
+        problem["detail"],
+        "a request with this idempotency key is in progress"
+    );
+
+    let alice_usd = balance(&app.balances(&alice.key, &alice.id).await, "USD").clone();
+    assert_eq!(alice_usd["available"], "1000.00");
+}
+
+#[sqlx::test]
+async fn stale_claim_means_the_operation_never_ran(pool: PgPool) {
+    let app = spawn_app(pool.clone()).await;
+    let (alice, bob) = alice_and_bob(&app).await;
+    let body = legs([leg(&alice.id, &bob.id, "USD", "100")]);
+    claim(&pool, &alice.id, "k1", &body, "2 minutes").await;
+
+    let mut responses = Vec::new();
+    for _ in 0..2 {
+        let response = app
+            .as_account(&alice.key, Method::POST, "/transactions")
+            .header("idempotency-key", "k1")
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 201);
+        responses.push(response.json::<Value>().await.unwrap());
+    }
+    assert_eq!(responses[0], responses[1]);
+
+    let alice_usd = balance(&app.balances(&alice.key, &alice.id).await, "USD").clone();
+    assert_eq!(alice_usd["available"], "900.00");
+}
+
+async fn claim(pool: &PgPool, account: &str, key: &str, body: &Value, age: &str) {
+    let print = fingerprint("POST", "/transactions", &serde_json::to_vec(body).unwrap());
+    sqlx::query(
+        "INSERT INTO idempotency_keys (account_id, key, fingerprint, claim, created_at)
+         VALUES ($1, $2, $3, $4, now() - $5::interval)",
+    )
+    .bind(Uuid::parse_str(account).unwrap())
+    .bind(key)
+    .bind(print)
+    .bind(Uuid::new_v4())
+    .bind(age)
+    .execute(pool)
+    .await
+    .unwrap();
 }

@@ -1,16 +1,61 @@
+use std::convert::Infallible;
+
 use axum::{
     body::{to_bytes, Body},
-    extract::{Request, State},
-    http::{header::CONTENT_TYPE, HeaderMap, Method, StatusCode},
+    extract::{FromRequestParts, Request, State},
+    http::{header::CONTENT_TYPE, request::Parts, HeaderMap, Method, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use sqlx::PgPool;
+use serde::Serialize;
+use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
 use crate::{db, error::Error, utils};
 
 const MAX_BODY: usize = 1 << 20;
+
+#[derive(Clone)]
+pub struct Claim {
+    account: Uuid,
+    key: String,
+    token: Uuid,
+}
+
+pub struct Claimed(pub Option<Claim>);
+
+impl<S: Send + Sync> FromRequestParts<S> for Claimed {
+    type Rejection = Infallible;
+
+    async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, Infallible> {
+        Ok(Self(parts.extensions.get::<Claim>().cloned()))
+    }
+}
+
+pub async fn commit<T: Serialize>(
+    mut tx: Transaction<'_, Postgres>,
+    claim: Option<Claim>,
+    status: StatusCode,
+    body: &T,
+) -> Result<(), Error> {
+    if let Some(claim) = claim {
+        let stored = db::complete_idempotency_key(
+            &mut tx,
+            claim.account,
+            &claim.key,
+            claim.token,
+            i32::from(status.as_u16()),
+            &serde_json::to_vec(body)?,
+        )
+        .await?;
+        if !stored {
+            return Err(Error::InProgress);
+        }
+    }
+    tx.commit().await?;
+
+    Ok(())
+}
 
 pub async fn layer(State(pool): State<PgPool>, request: Request, next: Next) -> Response {
     match handle(pool, request, next).await {
@@ -40,32 +85,25 @@ async fn handle(pool: PgPool, request: Request, next: Next) -> Result<Response, 
         .map_err(|_| Error::BadRequest("request body is unreadable or too large"))?;
     let fingerprint = utils::fingerprint(parts.method.as_str(), parts.uri.path(), &bytes);
 
-    if !db::claim_idempotency_key(&pool, account.id, &key, &fingerprint).await? {
-        return replay(&pool, account.id, &key, &fingerprint).await;
+    let claim = Claim {
+        account: account.id,
+        key,
+        token: Uuid::new_v4(),
+    };
+    if !db::claim_idempotency_key(&pool, claim.account, &claim.key, &fingerprint, claim.token)
+        .await?
+    {
+        return replay(&pool, claim.account, &claim.key, &fingerprint).await;
     }
 
-    let response = next
-        .run(Request::from_parts(parts, Body::from(bytes)))
-        .await;
+    let mut request = Request::from_parts(parts, Body::from(bytes));
+    request.extensions_mut().insert(claim.clone());
+    let response = next.run(request).await;
     if !response.status().is_success() {
-        db::release_idempotency_key(&pool, account.id, &key).await?;
-        return Ok(response);
+        db::release_idempotency_key(&pool, claim.account, &claim.key, claim.token).await?;
     }
 
-    let (parts, body) = response.into_parts();
-    let bytes = to_bytes(body, MAX_BODY)
-        .await
-        .map_err(|_| Error::BadRequest("response body is too large to remember"))?;
-    db::complete_idempotency_key(
-        &pool,
-        account.id,
-        &key,
-        i32::from(parts.status.as_u16()),
-        &bytes,
-    )
-    .await?;
-
-    Ok(Response::from_parts(parts, Body::from(bytes)))
+    Ok(response)
 }
 
 async fn replay(

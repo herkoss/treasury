@@ -45,6 +45,8 @@ pub enum Error {
     KeyReused,
     #[error("a request with this idempotency key is in progress")]
     InProgress,
+    #[error("response serialization failed: {0}")]
+    Serialize(#[from] serde_json::Error),
 }
 
 impl Error {
@@ -70,6 +72,7 @@ impl Error {
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
             Self::KeyReused => StatusCode::UNPROCESSABLE_ENTITY,
             Self::InProgress => StatusCode::CONFLICT,
+            Self::Serialize(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }

@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO idempotency_keys (account_id, key, fingerprint, claim)\n        VALUES ($1, $2, $3, $4)\n        ON CONFLICT (account_id, key) DO UPDATE\n            SET fingerprint = EXCLUDED.fingerprint, claim = EXCLUDED.claim,\n                status = NULL, body = NULL, created_at = now()\n            WHERE idempotency_keys.status IS NULL\n              AND idempotency_keys.created_at < now() - interval '1 minute'\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Bytea",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "085e0de2ed8bb2287d02417bf39a700199337d8f6bafb231c2838e427645000d"
+}

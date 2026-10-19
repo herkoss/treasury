@@ -17,7 +17,10 @@ use crate::{
     utils,
 };
 
-use super::{parse_account, Actor};
+use super::{
+    idempotency::{self, Claimed},
+    parse_account, Actor,
+};
 
 const DEFAULT_PAGE: i64 = 50;
 const MAX_PAGE: i64 = 200;
@@ -73,6 +76,7 @@ pub struct Entry {
 )]
 pub async fn create(
     Actor(actor): Actor,
+    Claimed(claim): Claimed,
     State(pool): State<PgPool>,
     Json(input): Json<CreateAccount>,
 ) -> Result<(StatusCode, Json<CreatedAccount>)> {
@@ -81,14 +85,16 @@ pub async fn create(
     }
 
     let key = hex::encode(rand::random::<[u8; 32]>());
+    let mut tx = pool.begin().await?;
     let account =
-        db::insert_account(&pool, Uuid::new_v4(), &input.name, &utils::key_hash(&key)).await?;
+        db::insert_account(&mut tx, Uuid::new_v4(), &input.name, &utils::key_hash(&key)).await?;
 
     let created = CreatedAccount {
         id: account.id,
         name: account.name,
         key,
     };
+    idempotency::commit(tx, claim, StatusCode::CREATED, &created).await?;
 
     Ok((StatusCode::CREATED, Json(created)))
 }

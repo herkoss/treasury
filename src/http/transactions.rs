@@ -18,7 +18,12 @@ use crate::{
     models::{self, Account, ApprovalRow, LegRow, ProposalRow},
 };
 
-use super::{account_ref, accounts::authorize, parse_account, Actor};
+use super::{
+    account_ref,
+    accounts::authorize,
+    idempotency::{self, Claim, Claimed},
+    parse_account, Actor,
+};
 
 const DEFAULT_TTL_SECS: i64 = 900;
 const MAX_TTL_SECS: i64 = 86_400;
@@ -91,6 +96,7 @@ pub struct ApprovalView {
 )]
 pub async fn create(
     Actor(actor): Actor,
+    Claimed(claim): Claimed,
     State(pool): State<PgPool>,
     Json(input): Json<CreateProposal>,
 ) -> Result<(StatusCode, Json<ProposalView>)> {
@@ -141,13 +147,13 @@ pub async fn create(
     let view = load_view(&mut tx, id)
         .await?
         .ok_or(Error::NotFound("proposal"))?;
-    tx.commit().await?;
-
     let status = if settled {
         StatusCode::CREATED
     } else {
         StatusCode::ACCEPTED
     };
+    idempotency::commit(tx, claim, status, &view).await?;
+
     Ok((status, Json(view)))
 }
 
@@ -201,10 +207,11 @@ pub async fn read(
 )]
 pub async fn approve(
     Actor(actor): Actor,
+    Claimed(claim): Claimed,
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ProposalView>> {
-    vote(&pool, &actor, id, Decision::Approved).await
+    vote(&pool, &actor, claim, id, Decision::Approved).await
 }
 
 #[utoipa::path(
@@ -222,10 +229,11 @@ pub async fn approve(
 )]
 pub async fn reject(
     Actor(actor): Actor,
+    Claimed(claim): Claimed,
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ProposalView>> {
-    vote(&pool, &actor, id, Decision::Rejected).await
+    vote(&pool, &actor, claim, id, Decision::Rejected).await
 }
 
 #[utoipa::path(
@@ -243,6 +251,7 @@ pub async fn reject(
 )]
 pub async fn cancel(
     Actor(actor): Actor,
+    Claimed(claim): Claimed,
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ProposalView>> {
@@ -259,7 +268,7 @@ pub async fn cancel(
     let view = load_view(&mut tx, id)
         .await?
         .ok_or(Error::NotFound("proposal"))?;
-    tx.commit().await?;
+    idempotency::commit(tx, claim, StatusCode::OK, &view).await?;
 
     Ok(Json(view))
 }
@@ -305,6 +314,7 @@ pub async fn outbox(
 async fn vote(
     pool: &PgPool,
     actor: &Account,
+    claim: Option<Claim>,
     id: Uuid,
     decision: Decision,
 ) -> Result<Json<ProposalView>> {
@@ -337,7 +347,7 @@ async fn vote(
     let view = load_view(&mut tx, id)
         .await?
         .ok_or(Error::NotFound("proposal"))?;
-    tx.commit().await?;
+    idempotency::commit(tx, claim, StatusCode::OK, &view).await?;
 
     Ok(Json(view))
 }

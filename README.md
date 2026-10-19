@@ -61,7 +61,10 @@ A mutating request may carry `Idempotency-Key`. The first request with a key is 
 its successful response is stored; a replay with the same key and the same body returns that
 response again, so a client that lost the answer to `POST /transactions` can retry without
 creating a second proposal. The same key with a different body is `422`; a replay while the
-first request is still running is `409`. Keys are scoped to the acting account.
+first request is still running is `409`. A key left in progress for a minute, by a crash, is
+taken over by the next request that carries it; that is safe because the response is stored in
+the same transaction as the operation, so "in progress" always means "not committed". Keys are
+scoped to the acting account.
 
 One request shape covers deposit, withdrawal, transfer and swap; only the legs differ:
 
@@ -199,11 +202,15 @@ the instant its TTL passes, whatever the row still says. A vote on it is refused
 A background sweeper (`src/sweeper.rs`) then closes the row in the database every
 `SWEEP_INTERVAL_SECS`, so the table agrees with the API; nothing depends on it running.
 
-**Idempotency.** `idempotency_keys` holds `(account, key) → fingerprint, status, body`. The
-middleware claims the key with `INSERT … ON CONFLICT DO NOTHING` before the handler runs, so two
-concurrent requests with the same key cannot both execute; it stores only successful responses
-and releases the key on failure, so a `422` can be retried once the cause is fixed. A claim
-left behind by a crash is reclaimable after a minute.
+**Idempotency.** `idempotency_keys` holds `(account, key) → fingerprint, claim, status, body`.
+The middleware claims the key with `INSERT … ON CONFLICT DO UPDATE` before the handler runs, so
+two concurrent requests with the same key cannot both execute. The handler then stores the
+response in the same database transaction as the operation, with `WHERE claim = <its token>`,
+so `status IS NULL` always means the operation did not commit. That is what makes recovery
+safe: a claim left behind by a crash is taken over after a minute and the retry runs the
+operation exactly once, while a claimant that lost its claim rolls back with `409`. Only
+successful responses are stored and a failed request releases its claim, so a `422` can be
+retried once the cause is fixed.
 
 **Settlement is one database transaction.** Lock the proposal row, lock every account in the
 legs with `SELECT … FOR UPDATE ORDER BY id` (a fixed order, so two settlements can never

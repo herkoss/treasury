@@ -14,7 +14,10 @@ use crate::{
     models::Asset,
 };
 
-use super::Actor;
+use super::{
+    idempotency::{self, Claimed},
+    Actor,
+};
 
 #[derive(Deserialize, ToSchema)]
 pub struct CreateAsset {
@@ -43,6 +46,7 @@ pub struct UpdateAsset {
 )]
 pub async fn create(
     Actor(actor): Actor,
+    Claimed(claim): Claimed,
     State(pool): State<PgPool>,
     Json(input): Json<CreateAsset>,
 ) -> Result<(StatusCode, Json<Asset>)> {
@@ -51,7 +55,9 @@ pub async fn create(
     }
     validate_asset(&input.code, input.scale)?;
 
-    let asset = db::insert_asset(&pool, &input.code, &input.name, i16::from(input.scale)).await?;
+    let mut tx = pool.begin().await?;
+    let asset = db::insert_asset(&mut tx, &input.code, &input.name, i16::from(input.scale)).await?;
+    idempotency::commit(tx, claim, StatusCode::CREATED, &asset).await?;
 
     Ok((StatusCode::CREATED, Json(asset)))
 }
@@ -104,6 +110,7 @@ pub async fn read(
 )]
 pub async fn update(
     Actor(actor): Actor,
+    Claimed(claim): Claimed,
     State(pool): State<PgPool>,
     Path(code): Path<String>,
     Json(input): Json<UpdateAsset>,
@@ -112,9 +119,11 @@ pub async fn update(
         return Err(Error::Forbidden);
     }
 
-    let asset = db::update_asset_name(&pool, &code, &input.name)
+    let mut tx = pool.begin().await?;
+    let asset = db::update_asset_name(&mut tx, &code, &input.name)
         .await?
         .ok_or(Error::NotFound("asset"))?;
+    idempotency::commit(tx, claim, StatusCode::OK, &asset).await?;
 
     Ok(Json(asset))
 }
@@ -134,6 +143,7 @@ pub async fn update(
 )]
 pub async fn archive(
     Actor(actor): Actor,
+    Claimed(claim): Claimed,
     State(pool): State<PgPool>,
     Path(code): Path<String>,
 ) -> Result<Json<Asset>> {
@@ -144,9 +154,11 @@ pub async fn archive(
         .await?
         .ok_or(Error::NotFound("asset"))?;
 
-    let asset = db::archive_asset(&pool, &code)
+    let mut tx = pool.begin().await?;
+    let asset = db::archive_asset(&mut tx, &code)
         .await?
         .ok_or(Error::InUse("asset"))?;
+    idempotency::commit(tx, claim, StatusCode::OK, &asset).await?;
 
     Ok(Json(asset))
 }

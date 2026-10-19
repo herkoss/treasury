@@ -52,7 +52,7 @@ pub async fn select_account_by_key_hash(
 }
 
 pub async fn insert_account(
-    pool: &PgPool,
+    conn: &mut PgConnection,
     id: Uuid,
     name: &str,
     hash: &[u8],
@@ -68,12 +68,12 @@ pub async fn insert_account(
         name,
         hash
     )
-    .fetch_one(pool)
+    .fetch_one(conn)
     .await
 }
 
 pub async fn insert_asset(
-    pool: &PgPool,
+    conn: &mut PgConnection,
     code: &str,
     name: &str,
     scale: i16,
@@ -89,7 +89,7 @@ pub async fn insert_asset(
         name,
         scale,
     )
-    .fetch_one(pool)
+    .fetch_one(conn)
     .await
     .map_err(|err| match err {
         sqlx::Error::Database(e) if e.is_unique_violation() => Error::AlreadyExists("asset"),
@@ -125,7 +125,7 @@ pub async fn select_asset_by_code(pool: &PgPool, code: &str) -> Result<Option<As
 }
 
 pub async fn update_asset_name(
-    pool: &PgPool,
+    conn: &mut PgConnection,
     code: &str,
     name: &str,
 ) -> Result<Option<Asset>, sqlx::Error> {
@@ -140,11 +140,14 @@ pub async fn update_asset_name(
         code,
         name
     )
-    .fetch_optional(pool)
+    .fetch_optional(conn)
     .await
 }
 
-pub async fn archive_asset(pool: &PgPool, code: &str) -> Result<Option<Asset>, sqlx::Error> {
+pub async fn archive_asset(
+    conn: &mut PgConnection,
+    code: &str,
+) -> Result<Option<Asset>, sqlx::Error> {
     sqlx::query_as!(
         Asset,
         r#"
@@ -169,7 +172,7 @@ pub async fn archive_asset(pool: &PgPool, code: &str) -> Result<Option<Asset>, s
         "#,
         code,
     )
-    .fetch_optional(pool)
+    .fetch_optional(conn)
     .await
 }
 
@@ -547,19 +550,22 @@ pub async fn claim_idempotency_key(
     account: Uuid,
     key: &str,
     fingerprint: &[u8],
+    claim: Uuid,
 ) -> Result<bool, sqlx::Error> {
     let result = sqlx::query!(
         r#"
-        INSERT INTO idempotency_keys (account_id, key, fingerprint)
-        VALUES ($1, $2, $3)
+        INSERT INTO idempotency_keys (account_id, key, fingerprint, claim)
+        VALUES ($1, $2, $3, $4)
         ON CONFLICT (account_id, key) DO UPDATE
-            SET fingerprint = EXCLUDED.fingerprint, status = NULL, body = NULL, created_at = now()
+            SET fingerprint = EXCLUDED.fingerprint, claim = EXCLUDED.claim,
+                status = NULL, body = NULL, created_at = now()
             WHERE idempotency_keys.status IS NULL
               AND idempotency_keys.created_at < now() - interval '1 minute'
         "#,
         account,
         key,
-        fingerprint
+        fingerprint,
+        claim
     )
     .execute(pool)
     .await?;
@@ -587,41 +593,45 @@ pub async fn select_idempotency_key(
 }
 
 pub async fn complete_idempotency_key(
-    pool: &PgPool,
+    conn: &mut PgConnection,
     account: Uuid,
     key: &str,
+    claim: Uuid,
     status: i32,
     body: &[u8],
-) -> Result<(), sqlx::Error> {
-    sqlx::query!(
+) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query!(
         r#"
         UPDATE idempotency_keys
-        SET status = $3, body = $4
-        WHERE account_id = $1 AND key = $2
+        SET status = $4, body = $5
+        WHERE account_id = $1 AND key = $2 AND claim = $3 AND status IS NULL
         "#,
         account,
         key,
+        claim,
         status,
         body
     )
-    .execute(pool)
+    .execute(conn)
     .await?;
 
-    Ok(())
+    Ok(result.rows_affected() == 1)
 }
 
 pub async fn release_idempotency_key(
     pool: &PgPool,
     account: Uuid,
     key: &str,
+    claim: Uuid,
 ) -> Result<(), sqlx::Error> {
     sqlx::query!(
         r#"
         DELETE FROM idempotency_keys
-        WHERE account_id = $1 AND key = $2
+        WHERE account_id = $1 AND key = $2 AND claim = $3 AND status IS NULL
         "#,
         account,
-        key
+        key,
+        claim
     )
     .execute(pool)
     .await?;
