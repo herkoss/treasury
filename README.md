@@ -21,10 +21,11 @@ Without Docker for the app itself: `docker compose up db`, then `cargo run --bin
 Migrations run at start-up. The `@issuer` account is created (or its key rotated) from
 `OPERATOR_KEY` every time the server starts.
 
-Every request except `GET /health` carries `X-Account-Key`. The operator key acts as `@issuer`;
-an account key, returned once by `POST /accounts`, acts as that account.
+Every request except `GET /health` and `POST /accounts` carries `X-Account-Key`. The operator
+key acts as `@issuer`; an account key, returned once by `POST /accounts`, acts as that account.
 
-The OpenAPI document is at `/openapi.json`, an interactive page at `/docs`.
+The OpenAPI document is at `/openapi.json`, an interactive page at `/docs`, and the demo client
+from [`web/`](web/) at `/`.
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -32,6 +33,8 @@ The OpenAPI document is at `/openapi.json`, an interactive page at `/docs`.
 | `OPERATOR_KEY` | | the `@issuer` key |
 | `SERVER_ADDR` | `127.0.0.1:8888` | listen address |
 | `SWEEP_INTERVAL_SECS` | `5` | how often expired proposals are closed in the database |
+| `WELCOME_GRANT` | empty | what a new account receives at registration, as `USD=1000,XAU=10` |
+| `WEB_DIR` | `web` | directory served at `/`; the API runs alone when it does not exist |
 | `RUST_LOG` | `info` | tracing filter |
 
 ## API
@@ -43,7 +46,8 @@ The OpenAPI document is at `/openapi.json`, an interactive page at `/docs`.
 | `GET` | `/assets/{code}` | anyone | read |
 | `PATCH` | `/assets/{code}` | issuer | rename `{name}` |
 | `DELETE` | `/assets/{code}` | issuer | archive, `409` while balances or pending offers exist |
-| `POST` | `/accounts` | issuer | create `{name}` → `201 {id, name, key}`, the key is shown once |
+| `POST` | `/accounts` | anyone | register `{name}` → `201 {id, name, key}`, the key is shown once; names are unique, `409` when taken |
+| `GET` | `/accounts` | anyone | directory, `{id, name}` of every account but `@issuer` |
 | `GET` | `/accounts/{id}/balances` | owner, issuer | `posted`, `on_hold`, `available` per asset |
 | `GET` | `/accounts/{id}/entries` | owner, issuer | journal, keyset paginated with `?after=<id>&limit=<n>` |
 | `GET` | `/accounts/{id}/inbox` | owner, issuer | pending offers that await this account's vote |
@@ -111,6 +115,38 @@ The same flow can be clicked through in Postman or watched in a terminal:
   of `OPERATOR_KEY` and run the collection top to bottom.
 * `scripts/demo.sh`: the walkthrough below with both accounts' balances printed after every
   step. Needs `curl` and `jq`.
+
+## Demo client
+
+[`web/index.html`](web/index.html) is a single static page over the public API, served by the
+binary itself from `/`: no build step, no framework, no CORS. It is a client, not part of the
+service: the proposal lists a UI among the non-goals, and nothing in the API exists only for it.
+
+* Register with a nickname: the key comes back once and the page keeps it in `localStorage`.
+  Signing in elsewhere is nickname plus key.
+* With `WELCOME_GRANT=USD=1000,XAU=10` every new account is funded at once, so strangers can
+  play without the operator. The assets must exist: sign in as `@issuer` with the operator key
+  once and create them from the issuer tools.
+* The page shows balances, the people directory, an offer form, inbox with approve and reject,
+  outbox with cancel, and the journal. Everything is polled every few seconds, so two browser
+  windows, or two phones, see the same offer move.
+
+The scripted flows assume accounts start empty: run `scripts/demo.sh` and the Postman
+collection against a server whose `WELCOME_GRANT` is unset.
+
+## Deploy
+
+The public demo runs on free tiers: the Docker image on Render, PostgreSQL on Neon.
+
+1. Create a Neon project and copy its connection string, it ends with `?sslmode=require`.
+2. In Render choose *New → Blueprint*, point it at this repository. [`render.yaml`](render.yaml)
+   describes one free web service; paste the Neon string as `DATABASE_URL`. Render generates
+   `OPERATOR_KEY`, the value is in the service's *Environment* tab.
+3. Open the site, sign in as `@issuer` with that key and create `USD` (scale 2) and `XAU`
+   (scale 3). From then on every registration is funded by the welcome grant.
+
+A free Render service sleeps after 15 idle minutes; the first request after that takes
+about a minute. Open the page a little before showing it.
 
 ## Walkthrough
 
@@ -188,7 +224,14 @@ curl -s $API/accounts/$ALICE_ID/entries -H "x-account-key: $ALICE_KEY"
 
 **Schema.** Six tables: `assets`, `accounts`, `proposals`, `legs`, `approvals`, `entries`.
 `entries` is the journal; a trigger forbids `UPDATE` and `DELETE` on it (I3). The `@issuer`
-account is the nil UUID and the only row with `is_issuer`, enforced by a partial unique index.
+account is the nil UUID and the only row with `is_issuer`, enforced by a partial unique index. Account names are unique case-insensitively, by an index on
+`lower(name)`, so the directory can address people by nickname.
+
+**The welcome grant is a deposit, not a special case.** When `WELCOME_GRANT` is set, registration
+writes a proposal from `@issuer` with one leg per asset, approves it as the issuer and settles it,
+all in the transaction that inserts the account. It shows up in the journal with the memo
+`welcome`, the issuer's balance goes negative by exactly what is in circulation, and I1 holds.
+No account row exists without its grant, and no grant without its account.
 
 **Holds and balances are derived, never stored.** A hold is "a leg whose `from` account has an
 `approved` row on a proposal that is still `pending` and not past `expires_at`". `posted` is

@@ -18,7 +18,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --user-group --no-create-home app
 COPY --from=builder /app/target/release/server /usr/local/bin/server
+COPY web /srv/web
 USER app
-ENV SERVER_ADDR=0.0.0.0:8888
+ENV SERVER_ADDR=0.0.0.0:8888 WEB_DIR=/srv/web
 EXPOSE 8888
 CMD ["server"]

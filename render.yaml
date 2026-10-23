@@ -1,0 +1,24 @@
+# Render Blueprint for the public demo: one free Docker web service.
+# The database lives on Neon (free, no expiry); paste its connection string,
+# with ?sslmode=require, as DATABASE_URL when Render asks for it.
+services:
+  - type: web
+    name: treasury
+    runtime: docker
+    plan: free
+    region: frankfurt
+    branch: capstone
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: OPERATOR_KEY
+        generateValue: true
+      - key: WELCOME_GRANT
+        value: USD=1000,XAU=10
+      - key: SERVER_ADDR
+        value: 0.0.0.0:10000
+      - key: RUST_LOG
+        value: info
