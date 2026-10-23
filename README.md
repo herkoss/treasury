@@ -136,9 +136,12 @@ collection against a server whose `WELCOME_GRANT` is unset.
 
 ## Deploy
 
-The public demo runs on free tiers: the Docker image on Render, PostgreSQL on Neon.
+The public demo is at **https://treasury-ybfv.onrender.com**: the Docker image on Render,
+PostgreSQL on Neon, both in Frankfurt.
 
-1. Create a Neon project and copy its connection string, it ends with `?sslmode=require`.
+1. Create a Neon project in the region of the Render service and copy its connection string
+   with *Connection pooling* off: sqlx migrations take a session-level advisory lock, which a
+   transaction-mode pooler does not keep. The string carries `?sslmode=require`.
 2. In Render choose *New → Blueprint*, point it at this repository. [`render.yaml`](render.yaml)
    describes one free web service; paste the Neon string as `DATABASE_URL`. Render generates
    `OPERATOR_KEY`, the value is in the service's *Environment* tab.

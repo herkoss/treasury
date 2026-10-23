@@ -1,6 +1,6 @@
-# Render Blueprint for the public demo: one free Docker web service.
-# The database lives on Neon (free, no expiry); paste its connection string,
-# with ?sslmode=require, as DATABASE_URL when Render asks for it.
+# Render Blueprint for the public demo: one Docker web service.
+# The database lives on Neon in the same region. Paste its direct connection
+# string (pooling off: migrations take a session advisory lock) as DATABASE_URL.
 services:
   - type: web
     name: treasury
@@ -22,3 +22,6 @@ services:
         value: 0.0.0.0:10000
       - key: RUST_LOG
         value: info
+      # Expiry is lazy; a slow sweeper lets the Neon compute scale to zero.
+      - key: SWEEP_INTERVAL_SECS
+        value: "600"
