@@ -1,4 +1,4 @@
-use sqlx::{postgres::PgPoolOptions, PgConnection, PgPool};
+use sqlx::{postgres::PgPoolOptions, PgConnection, PgExecutor, PgPool};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -56,7 +56,7 @@ pub async fn insert_account(
     id: Uuid,
     name: &str,
     hash: &[u8],
-) -> Result<Account, sqlx::Error> {
+) -> TreasuryResult<Account> {
     sqlx::query_as!(
         Account,
         r#"
@@ -69,6 +69,25 @@ pub async fn insert_account(
         hash
     )
     .fetch_one(conn)
+    .await
+    .map_err(|err| match err {
+        sqlx::Error::Database(e) if e.is_unique_violation() => Error::AlreadyExists("account name"),
+        other => Error::Db(other),
+    })
+}
+
+pub async fn select_accounts(pool: &PgPool) -> Result<Vec<Account>, sqlx::Error> {
+    sqlx::query_as!(
+        Account,
+        r#"
+        SELECT id, name, is_issuer, created_at
+        FROM accounts
+        WHERE NOT is_issuer
+        ORDER BY lower(name)
+        LIMIT 1000
+        "#
+    )
+    .fetch_all(pool)
     .await
 }
 
@@ -176,8 +195,8 @@ pub async fn archive_asset(
     .await
 }
 
-pub async fn select_scales(
-    pool: &PgPool,
+pub async fn select_scales<'e>(
+    executor: impl PgExecutor<'e>,
     codes: &[String],
 ) -> Result<Vec<(String, i16)>, sqlx::Error> {
     let rows = sqlx::query!(
@@ -188,7 +207,7 @@ pub async fn select_scales(
         "#,
         codes
     )
-    .fetch_all(pool)
+    .fetch_all(executor)
     .await?;
 
     Ok(rows.into_iter().map(|row| (row.code, row.scale)).collect())

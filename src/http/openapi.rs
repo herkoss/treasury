@@ -9,7 +9,7 @@ use super::{accounts, assets, transactions};
 #[openapi(
     info(
         title = "treasury",
-        description = "An asset ledger with consent-based settlement. Every request except GET /health carries X-Account-Key: the operator key acts as @issuer, an account key acts as that account."
+        description = "An asset ledger with consent-based settlement. Every request except GET /health and POST /accounts carries X-Account-Key: the operator key acts as @issuer, an account key acts as that account."
     ),
     paths(
         assets::create,
@@ -18,6 +18,7 @@ use super::{accounts, assets, transactions};
         assets::update,
         assets::archive,
         accounts::create,
+        accounts::list,
         accounts::balances,
         accounts::entries,
         transactions::inbox,

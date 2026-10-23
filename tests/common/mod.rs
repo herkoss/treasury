@@ -6,7 +6,7 @@ use reqwest::{Client, Method, RequestBuilder, Response};
 use serde_json::{json, Value};
 use sqlx::PgPool;
 use tokio::net::TcpListener;
-use treasury::utils::key_hash;
+use treasury::{http::AppState, utils::key_hash, welcome::Grant};
 
 pub struct TestApp {
     pub addr: String,
@@ -62,11 +62,16 @@ impl TestApp {
             .await
             .unwrap();
         assert_eq!(response.status(), 201);
-        let body: Value = response.json().await.unwrap();
-        Party {
-            id: body["id"].as_str().unwrap().to_string(),
-            key: body["key"].as_str().unwrap().to_string(),
-        }
+        party(response).await
+    }
+
+    /// Self-service registration: no key at all.
+    pub async fn register(&self, name: &str) -> Response {
+        self.request(Method::POST, "/accounts")
+            .json(&json!({ "name": name }))
+            .send()
+            .await
+            .unwrap()
     }
 
     pub async fn propose(&self, key: &str, body: Value) -> Response {
@@ -129,6 +134,14 @@ impl TestApp {
     }
 }
 
+pub async fn party(response: Response) -> Party {
+    let body: Value = response.json().await.unwrap();
+    Party {
+        id: body["id"].as_str().unwrap().to_string(),
+        key: body["key"].as_str().unwrap().to_string(),
+    }
+}
+
 pub fn leg(from: &str, to: &str, asset: &str, amount: &str) -> Value {
     json!({ "from": from, "to": to, "asset": asset, "amount": amount })
 }
@@ -156,7 +169,12 @@ pub fn approval<'a>(proposal: &'a Value, account: &str) -> &'a Value {
 }
 
 pub async fn spawn_app(pool: PgPool) -> TestApp {
-    let state = treasury::http::AppState { pool: pool.clone() };
+    spawn_app_with(pool, Vec::new()).await
+}
+
+pub async fn spawn_app_with(pool: PgPool, welcome: Vec<Grant>) -> TestApp {
+    let mut state = AppState::new(pool.clone());
+    state.welcome = welcome;
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = format!("http://{}", listener.local_addr().unwrap());

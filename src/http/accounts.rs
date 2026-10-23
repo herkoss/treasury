@@ -14,16 +14,17 @@ use crate::{
     domain::format_units,
     error::{Error, Problem, Result},
     models::{self, Account},
-    utils,
+    utils, welcome,
 };
 
 use super::{
     idempotency::{self, Claimed},
-    parse_account, Actor,
+    parse_account, Actor, AppState,
 };
 
 const DEFAULT_PAGE: i64 = 50;
 const MAX_PAGE: i64 = 200;
+const MAX_NAME_CHARS: usize = 32;
 
 #[derive(Deserialize, ToSchema)]
 pub struct CreateAccount {
@@ -35,6 +36,15 @@ pub struct CreatedAccount {
     pub id: Uuid,
     pub name: String,
     pub key: String,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct AccountView {
+    pub id: Uuid,
+    pub name: String,
+
+    #[serde(with = "time::serde::rfc3339")]
+    pub created_at: OffsetDateTime,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -63,6 +73,23 @@ pub struct Entry {
     pub created_at: OffsetDateTime,
 }
 
+fn validate_name(name: &str) -> Result<&str> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(Error::Name("must not be empty"));
+    }
+    if name.chars().count() > MAX_NAME_CHARS {
+        return Err(Error::Name("must be at most 32 characters"));
+    }
+    if name.starts_with('@') {
+        return Err(Error::Name("must not start with @"));
+    }
+    if name.chars().any(char::is_control) {
+        return Err(Error::Name("must not contain control characters"));
+    }
+    Ok(name)
+}
+
 #[utoipa::path(
     post,
     path = "/accounts",
@@ -70,24 +97,22 @@ pub struct Entry {
     request_body = CreateAccount,
     responses(
         (status = 201, body = CreatedAccount, description = "the key is returned only here"),
-        (status = 403, body = Problem, description = "not the issuer"),
+        (status = 409, body = Problem, description = "the name is taken"),
+        (status = 422, body = Problem, description = "invalid name"),
     ),
-    security(("account_key" = []))
+    security((), ("account_key" = []))
 )]
 pub async fn create(
-    Actor(actor): Actor,
     Claimed(claim): Claimed,
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Json(input): Json<CreateAccount>,
 ) -> Result<(StatusCode, Json<CreatedAccount>)> {
-    if !actor.is_issuer {
-        return Err(Error::Forbidden);
-    }
+    let name = validate_name(&input.name)?;
 
     let key = hex::encode(rand::random::<[u8; 32]>());
-    let mut tx = pool.begin().await?;
-    let account =
-        db::insert_account(&mut tx, Uuid::new_v4(), &input.name, &utils::key_hash(&key)).await?;
+    let mut tx = state.pool.begin().await?;
+    let account = db::insert_account(&mut tx, Uuid::new_v4(), name, &utils::key_hash(&key)).await?;
+    welcome::apply(&mut tx, &state.welcome, account.id).await?;
 
     let created = CreatedAccount {
         id: account.id,
@@ -97,6 +122,30 @@ pub async fn create(
     idempotency::commit(tx, claim, StatusCode::CREATED, &created).await?;
 
     Ok((StatusCode::CREATED, Json(created)))
+}
+
+#[utoipa::path(
+    get,
+    path = "/accounts",
+    tag = "accounts",
+    responses((status = 200, body = Vec<AccountView>), (status = 401, body = Problem)),
+    security(("account_key" = []))
+)]
+pub async fn list(
+    Actor(_actor): Actor,
+    State(pool): State<PgPool>,
+) -> Result<Json<Vec<AccountView>>> {
+    let accounts = db::select_accounts(&pool)
+        .await?
+        .into_iter()
+        .map(|account| AccountView {
+            id: account.id,
+            name: account.name,
+            created_at: account.created_at,
+        })
+        .collect();
+
+    Ok(Json(accounts))
 }
 
 pub fn authorize(actor: &Account, account: &str) -> Result<Uuid> {

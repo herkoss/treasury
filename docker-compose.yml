@@ -23,6 +23,7 @@ services:
     environment:
       DATABASE_URL: postgres://treasury:treasury@db:5432/treasury
       OPERATOR_KEY: ${OPERATOR_KEY:?set OPERATOR_KEY in .env}
+      WELCOME_GRANT: ${WELCOME_GRANT:-}
       RUST_LOG: info
     depends_on:
       db:

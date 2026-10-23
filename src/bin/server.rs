@@ -1,5 +1,5 @@
 use clap::Parser;
-use std::{process, time::Duration};
+use std::{path::PathBuf, process, time::Duration};
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 
@@ -14,6 +14,12 @@ struct Args {
     operator_key: String,
     #[arg(long, env = "SWEEP_INTERVAL_SECS", default_value = "5")]
     sweep_interval_secs: u64,
+    /// What every new account receives, as `USD=1000,XAU=10`; empty for nothing.
+    #[arg(long, env = "WELCOME_GRANT", default_value = "")]
+    welcome_grant: String,
+    /// Directory with the demo UI, served from `/` when it exists.
+    #[arg(long, env = "WEB_DIR", default_value = "web")]
+    web_dir: PathBuf,
 }
 
 #[tokio::main]
@@ -28,6 +34,8 @@ async fn main() {
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
+    let welcome = treasury::welcome::parse(&args.welcome_grant)
+        .map_err(|err| format!("WELCOME_GRANT: {err}"))?;
 
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into());
     tracing_subscriber::fmt().with_env_filter(filter).init();
@@ -41,7 +49,22 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         Duration::from_secs(args.sweep_interval_secs),
     ));
 
-    let state = treasury::http::AppState { pool };
+    let web_dir = if args.web_dir.is_dir() {
+        tracing::info!(dir = %args.web_dir.display(), "serving the demo UI");
+        Some(args.web_dir)
+    } else {
+        tracing::warn!(dir = %args.web_dir.display(), "no demo UI directory, serving the API only");
+        None
+    };
+    if !welcome.is_empty() {
+        tracing::info!(grant = args.welcome_grant, "welcome grant enabled");
+    }
+
+    let state = treasury::http::AppState {
+        pool,
+        welcome,
+        web_dir,
+    };
 
     let listener = TcpListener::bind(args.server_addr).await?;
     tracing::info!(addr = %listener.local_addr()?, "listening");

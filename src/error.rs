@@ -47,6 +47,10 @@ pub enum Error {
     InProgress,
     #[error("response serialization failed: {0}")]
     Serialize(#[from] serde_json::Error),
+    #[error("invalid name: {0}")]
+    Name(&'static str),
+    #[error("server misconfigured: {0}")]
+    Misconfigured(String),
 }
 
 impl Error {
@@ -73,6 +77,8 @@ impl Error {
             Self::KeyReused => StatusCode::UNPROCESSABLE_ENTITY,
             Self::InProgress => StatusCode::CONFLICT,
             Self::Serialize(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::Name(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::Misconfigured(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }

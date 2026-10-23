@@ -52,6 +52,14 @@
     {
       "key": "ttlId",
       "value": ""
+    },
+    {
+      "key": "aliceName",
+      "value": ""
+    },
+    {
+      "key": "bobName",
+      "value": ""
     }
   ],
   "item": [
@@ -160,7 +168,8 @@
                   "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
                   "pm.collectionVariables.set(\"aliceId\", pm.response.json().id);",
                   "pm.collectionVariables.set(\"aliceKey\", pm.response.json().key);",
-                  "console.log(\"alice \" + pm.response.json().id);"
+                  "console.log(\"alice \" + pm.response.json().id);",
+                  "pm.collectionVariables.set('aliceName', pm.response.json().name);"
                 ]
               }
             }
@@ -188,7 +197,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"name\":\"alice\"}",
+              "raw": "{\"name\":\"alice-{{$timestamp}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -208,7 +217,8 @@
                   "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
                   "pm.collectionVariables.set(\"bobId\", pm.response.json().id);",
                   "pm.collectionVariables.set(\"bobKey\", pm.response.json().key);",
-                  "console.log(\"bob   \" + pm.response.json().id);"
+                  "console.log(\"bob   \" + pm.response.json().id);",
+                  "pm.collectionVariables.set('bobName', pm.response.json().name);"
                 ]
               }
             }
@@ -236,12 +246,51 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"name\":\"bob\"}",
+              "raw": "{\"name\":\"bob-{{$timestamp}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
+            }
+          }
+        },
+        {
+          "name": "alice lists everyone",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                  "const names = pm.response.json().map(a => a.name);",
+                  "pm.test(\"alice and bob are listed, the issuer is not\", () => {",
+                  "  pm.expect(names).to.include(pm.collectionVariables.get('aliceName'));",
+                  "  pm.expect(names).to.include(pm.collectionVariables.get('bobName'));",
+                  "  pm.expect(names).to.not.include('@issuer');",
+                  "});",
+                  "pm.test(\"no keys are exposed\", () => pm.expect(pm.response.json().every(a => !('key' in a))).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{aliceKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts"
+              ]
             }
           }
         },

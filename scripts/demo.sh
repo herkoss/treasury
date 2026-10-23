@@ -34,9 +34,10 @@ show() {
 
 call "$OP" POST /assets '{"code":"USD","name":"US Dollar","scale":2}' >/dev/null
 call "$OP" POST /assets '{"code":"XAU","name":"Gold, troy ounces","scale":3}' >/dev/null
-call "$OP" POST /accounts '{"name":"alice"}'
+RUN=$(date +%s)   # names are unique, so every run gets its own alice and bob
+call "$OP" POST /accounts "{\"name\":\"alice-$RUN\"}"
 ALICE_ID=$(echo "$BODY" | jq -r .id); ALICE_KEY=$(echo "$BODY" | jq -r .key)
-call "$OP" POST /accounts '{"name":"bob"}'
+call "$OP" POST /accounts "{\"name\":\"bob-$RUN\"}"
 BOB_ID=$(echo "$BODY" | jq -r .id); BOB_KEY=$(echo "$BODY" | jq -r .key)
 
 leg() { printf '{"from":"%s","to":"%s","asset":"%s","amount":"%s"}' "$1" "$2" "$3" "$4"; }
