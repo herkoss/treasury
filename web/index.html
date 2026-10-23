@@ -10,20 +10,30 @@
     --accent: #4cc2ff; --ok: #4ade80; --bad: #f87171; --warn: #fbbf24; --hold: #c084fc;
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
   a { color: var(--accent); }
   header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); }
   header h1 { font-size: 18px; margin: 0; letter-spacing: .04em; }
   header .spacer { flex: 1; }
   header .muted a { margin-left: 10px; }
-  main { padding: 16px; max-width: 1280px; margin: 0 auto; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; align-items: start; }
+  main { padding: 16px; max-width: 1240px; margin: 0 auto; }
+  .layout { display: grid; gap: 16px; align-items: stretch;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 1fr);
+    grid-template-areas: "balances offer people" "inbox outbox journal"; }
+  .layout.issuer { grid-template-areas: "balances offer tools" "people journal journal"; }
+  .layout.issuer .area-inbox, .layout.issuer .area-outbox { display: none; }
+  .area-balances { grid-area: balances; } .area-offer { grid-area: offer; } .area-tools { grid-area: tools; }
+  .area-inbox { grid-area: inbox; } .area-outbox { grid-area: outbox; }
+  .area-people { grid-area: people; } .area-journal { grid-area: journal; }
+  .card { min-width: 0; display: flex; flex-direction: column; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
   .card h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
   .card h2 .count { background: var(--line); color: var(--text); border-radius: 999px; padding: 0 8px; font-size: 12px; }
   .muted { color: var(--muted); }
   .small { font-size: 13px; }
   .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+  input, select { width: 100%; min-width: 0; }
   input, select, button, textarea { font: inherit; color: var(--text); background: #0f172a; border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; }
   input:focus, select:focus { outline: 1px solid var(--accent); }
   button { cursor: pointer; background: #1f2b44; }
@@ -32,10 +42,16 @@
   button.bad { background: #5b1a1a; border-color: #7f1d1d; }
   button:disabled { opacity: .5; cursor: default; }
   label { display: block; font-size: 13px; color: var(--muted); margin: 8px 0 3px; }
-  .row { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
-  .row > * { flex: 1; min-width: 90px; }
-  .row > .fixed { flex: 0 0 auto; }
-  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+  .pair > * { min-width: 0; }
+  .layout.issuer .pair { grid-template-columns: minmax(0, 1fr); }
+  header select { width: auto; max-width: 180px; }
+  #whoami { display: flex; gap: 8px; }
+  .amount { display: grid; grid-template-columns: minmax(0, 1fr) 92px; gap: 8px; }
+  .memo { display: grid; grid-template-columns: minmax(0, 1fr) 140px; gap: 12px; }
+  .asset { display: grid; grid-template-columns: 90px minmax(0, 1fr) 80px; gap: 8px; }
+  .actions { margin-top: 12px; }
+  .hint { color: var(--muted); font-size: 12px; }
   table { width: 100%; border-collapse: collapse; }
   td, th { text-align: left; padding: 5px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
   th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
@@ -43,7 +59,8 @@
   .ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); } .hold { color: var(--hold); }
   .item { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
   .item .actions { margin-top: 8px; display: flex; gap: 8px; }
-  .people { max-height: 320px; overflow: auto; }
+  .people { max-height: 340px; overflow: auto; margin-top: 8px; }
+  #journal { max-height: 380px; overflow: auto; }
   .person { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-bottom: 1px solid var(--line); }
   .person .name { flex: 1; }
   .empty { color: var(--muted); font-style: italic; padding: 6px 0; }
@@ -53,12 +70,25 @@
   .saved { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
   .journal .entry { display: flex; gap: 10px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
   .journal .entry .when { color: var(--muted); flex: 0 0 60px; font-size: 13px; }
-  .journal .entry .amounts { flex: 1; }
+  .journal .entry .amounts { flex: 1; display: flex; flex-wrap: wrap; column-gap: 10px; }
+  .journal .entry .amounts span { white-space: nowrap; }
   .journal .detail { padding: 4px 0 8px 70px; color: var(--muted); font-size: 13px; }
   #toasts { position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 10; }
   .toast { background: #1f2b44; border: 1px solid var(--line); border-left: 4px solid var(--accent); padding: 10px 14px; border-radius: 8px; max-width: 380px; box-shadow: 0 6px 20px #0008; }
   .toast.ok { border-left-color: var(--ok); } .toast.bad { border-left-color: var(--bad); } .toast.warn { border-left-color: var(--warn); }
-  @media (max-width: 600px) { .pair { grid-template-columns: 1fr; } header .muted { display: none; } }
+  @media (max-width: 1080px) {
+    .layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-areas: "balances people" "offer offer" "inbox outbox" "journal journal"; }
+    .layout.issuer { grid-template-areas: "balances tools" "offer offer" "people journal"; }
+  }
+  @media (max-width: 680px) {
+    .layout, .layout.issuer { grid-template-columns: minmax(0, 1fr);
+      grid-template-areas: "balances" "inbox" "offer" "outbox" "people" "journal"; }
+    .layout.issuer { grid-template-areas: "balances" "offer" "tools" "people" "journal"; }
+    .pair, .auth .pair { grid-template-columns: minmax(0, 1fr); }
+    header .muted { display: none; }
+    .auth { margin: 16px auto; }
+  }
 </style>
 </head>
 <body>
@@ -86,9 +116,9 @@
       <div id="reveal" hidden>
         <p class="warn">Save this key. It is not stored on the server and cannot be recovered.</p>
         <div class="keybox mono" id="revealKey"></div>
-        <div class="row">
-          <button id="copyKey" class="fixed">Copy</button>
-          <button id="enter" class="primary fixed">Continue</button>
+        <div class="actions" style="display:flex; gap:8px">
+          <button id="copyKey">Copy</button>
+          <button id="enter" class="primary">Continue</button>
         </div>
       </div>
     </div>
@@ -107,13 +137,13 @@
 </main>
 
 <main id="app" hidden>
-  <div class="grid">
-    <section class="card" id="balancesCard">
+  <div class="layout" id="layout">
+    <section class="card area-balances">
       <h2>Balances</h2>
       <div id="balances"></div>
     </section>
 
-    <section class="card" id="offerCard">
+    <section class="card area-offer" id="offerCard">
       <h2 id="offerTitle">Offer</h2>
       <form id="offer">
         <label>Counterparty</label>
@@ -121,25 +151,25 @@
         <div class="pair">
           <div>
             <label id="giveLabel">You give</label>
-            <div class="row">
+            <div class="amount">
               <input name="giveAmount" required placeholder="100" inputmode="decimal" autocomplete="off">
-              <select name="giveAsset" required class="fixed"></select>
+              <select name="giveAsset" required></select>
             </div>
           </div>
           <div id="receiveBlock">
-            <label>You receive <span class="muted">(empty = plain transfer)</span></label>
-            <div class="row">
+            <label>You receive <span class="hint">empty = transfer</span></label>
+            <div class="amount">
               <input name="getAmount" placeholder="1.5" inputmode="decimal" autocomplete="off">
-              <select name="getAsset" class="fixed"></select>
+              <select name="getAsset"></select>
             </div>
           </div>
         </div>
-        <div class="row">
+        <div class="memo">
           <div>
             <label>Memo</label>
             <input name="memo" maxlength="120" placeholder="optional" autocomplete="off">
           </div>
-          <div class="fixed">
+          <div>
             <label>Expires in</label>
             <select name="ttl">
               <option value="60">1 minute</option>
@@ -149,43 +179,42 @@
             </select>
           </div>
         </div>
-        <div style="margin-top:12px"><button class="primary" id="offerSubmit">Send</button></div>
+        <div class="actions"><button class="primary" id="offerSubmit">Send</button></div>
       </form>
     </section>
 
-    <section class="card" id="issuerCard" hidden>
+    <section class="card area-tools" id="issuerCard" hidden>
       <h2>Issuer tools</h2>
       <form id="newAsset">
-        <label>New asset</label>
-        <div class="row">
-          <input name="code" required placeholder="USD" maxlength="12" autocomplete="off" style="text-transform:uppercase">
-          <input name="name" required placeholder="US Dollar" autocomplete="off">
-          <input name="scale" required type="number" min="0" max="9" value="2" class="fixed" style="width:70px" title="decimal places">
-          <button class="fixed">Create</button>
+        <div class="asset">
+          <div><label>Code</label><input name="code" required placeholder="XAU" maxlength="12" autocomplete="off" style="text-transform:uppercase"></div>
+          <div><label>Name</label><input name="name" required placeholder="Gold" autocomplete="off"></div>
+          <div><label>Decimals</label><input name="scale" required type="number" min="0" max="9" value="2"></div>
         </div>
+        <div class="actions"><button>Create asset</button></div>
       </form>
       <p class="muted small" id="assetsList"></p>
     </section>
 
-    <section class="card">
+    <section class="card area-inbox" id="inboxCard">
       <h2>Inbox <span class="count" id="inboxCount">0</span></h2>
       <p class="muted small">Offers that wait for your approval. Nothing of yours is held until you approve.</p>
       <div id="inbox"></div>
     </section>
 
-    <section class="card">
+    <section class="card area-outbox" id="outboxCard">
       <h2>Outbox <span class="count" id="outboxCount">0</span></h2>
       <p class="muted small">Your pending offers. What you promised is on hold until they close.</p>
       <div id="outbox"></div>
     </section>
 
-    <section class="card">
+    <section class="card area-people">
       <h2>People</h2>
-      <input id="search" placeholder="search by nickname" autocomplete="off" style="width:100%">
+      <input id="search" placeholder="search by nickname" autocomplete="off">
       <div class="people" id="people"></div>
     </section>
 
-    <section class="card journal">
+    <section class="card journal area-journal">
       <h2>Journal</h2>
       <p class="muted small">Settled movements, newest first. Click one for the proposal behind it.</p>
       <div id="journal"></div>
@@ -314,6 +343,7 @@ async function enter(identity) {
   $('#app').hidden = false;
   $('#whoami').hidden = false;
   $('#issuerCard').hidden = !me.issuer;
+  $('#layout').classList.toggle('issuer', me.issuer);
   $('#offerTitle').textContent = me.issuer ? 'Deposit' : 'Offer';
   $('#giveLabel').textContent = me.issuer ? 'Amount' : 'You give';
   $('#receiveBlock').hidden = me.issuer;
@@ -431,7 +461,7 @@ function renderOfferForm() {
   const f = $('#offer');
   const others = accounts.filter((a) => !isMe(a.id));
   const people = others.map((a) => `<option value="${a.id}">${esc(a.name)}</option>`).join('');
-  keepSelection(f.to, me.issuer ? people : people + `<option value="${ISSUER}">${ISSUER} (withdraw)</option>`);
+  keepSelection(f.to, people);
   const giveAssets = me.issuer
     ? assets.map((a) => a.code)
     : balances.filter((b) => parseFloat(b.available) > 0).map((b) => b.asset);
@@ -521,7 +551,7 @@ function renderJournal() {
     g.lines.push(e);
   }
   const changed = patch('#journal', groups.length ? groups.map((g) => {
-    const amounts = g.lines.map((l) => `<span class="${l.amount.startsWith('-') ? 'bad' : 'ok'}">${l.amount.startsWith('-') ? '' : '+'}${l.amount} ${esc(l.asset)}</span>`).join(' &nbsp; ');
+    const amounts = g.lines.map((l) => `<span class="${l.amount.startsWith('-') ? 'bad' : 'ok'}">${l.amount.startsWith('-') ? '' : '+'}${l.amount} ${esc(l.asset)}</span>`).join('');
     const p = proposalCache.get(g.id);
     const open = openEntries.has(g.id);
     let detail = '';
