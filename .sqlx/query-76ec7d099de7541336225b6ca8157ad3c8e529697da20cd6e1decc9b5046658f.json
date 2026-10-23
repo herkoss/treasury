@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO proposals (id, proposer_id, memo, state, expires_at)\n        VALUES ($1, $2, $3, 'pending', $4)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "76ec7d099de7541336225b6ca8157ad3c8e529697da20cd6e1decc9b5046658f"
+}

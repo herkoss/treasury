@@ -1,0 +1,27 @@
+# Render Blueprint for the public demo: one Docker web service.
+# The database lives on Neon in the same region. Paste its direct connection
+# string (pooling off: migrations take a session advisory lock) as DATABASE_URL.
+services:
+  - type: web
+    name: treasury
+    runtime: docker
+    plan: free
+    region: frankfurt
+    branch: capstone
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: OPERATOR_KEY
+        generateValue: true
+      - key: WELCOME_GRANT
+        value: USD=1000,XAU=10
+      - key: SERVER_ADDR
+        value: 0.0.0.0:10000
+      - key: RUST_LOG
+        value: info
+      # Expiry is lazy; a slow sweeper lets the Neon compute scale to zero.
+      - key: SWEEP_INTERVAL_SECS
+        value: "600"

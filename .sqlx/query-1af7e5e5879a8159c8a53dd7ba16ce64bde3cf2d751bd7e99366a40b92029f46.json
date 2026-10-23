@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO entries (proposal_id, account_id, asset_code, amount)\n        SELECT proposal_id, from_id, asset_code, -amount FROM legs WHERE proposal_id = $1\n        UNION ALL\n        SELECT proposal_id, to_id, asset_code, amount FROM legs WHERE proposal_id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1af7e5e5879a8159c8a53dd7ba16ce64bde3cf2d751bd7e99366a40b92029f46"
+}

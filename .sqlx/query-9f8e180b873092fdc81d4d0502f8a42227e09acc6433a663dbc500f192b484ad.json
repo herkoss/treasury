@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE proposals\n        SET state = 'expired', closed_at = expires_at\n        WHERE state = 'pending' AND expires_at <= now()\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "9f8e180b873092fdc81d4d0502f8a42227e09acc6433a663dbc500f192b484ad"
+}

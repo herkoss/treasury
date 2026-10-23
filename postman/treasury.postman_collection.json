@@ -1,0 +1,1703 @@
+{
+  "info": {
+    "name": "Treasury",
+    "description": "Asset ledger with consent-based settlement. Set operatorKey to OPERATOR_KEY from .env, then run the folders in order: every request stores what the next one needs.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8888"
+    },
+    {
+      "key": "operatorKey",
+      "value": ""
+    },
+    {
+      "key": "aliceId",
+      "value": ""
+    },
+    {
+      "key": "aliceKey",
+      "value": ""
+    },
+    {
+      "key": "bobId",
+      "value": ""
+    },
+    {
+      "key": "bobKey",
+      "value": ""
+    },
+    {
+      "key": "swapId",
+      "value": ""
+    },
+    {
+      "key": "offerId",
+      "value": ""
+    },
+    {
+      "key": "holdId",
+      "value": ""
+    },
+    {
+      "key": "idemKey",
+      "value": ""
+    },
+    {
+      "key": "idemId",
+      "value": ""
+    },
+    {
+      "key": "ttlId",
+      "value": ""
+    },
+    {
+      "key": "aliceName",
+      "value": ""
+    },
+    {
+      "key": "bobName",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1 Setup (issuer)",
+      "description": "Two assets, two fresh accounts, two deposits. Assets may already exist, so 409 is fine there.",
+      "item": [
+        {
+          "name": "create USD",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"USD exists (201 or 409)\", () => pm.expect([201, 409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{operatorKey}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/assets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "assets"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"code\":\"USD\",\"name\":\"US Dollar\",\"scale\":2}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "create XAU",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"XAU exists (201 or 409)\", () => pm.expect([201, 409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{operatorKey}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/assets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "assets"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"code\":\"XAU\",\"name\":\"Gold, troy ounces\",\"scale\":3}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "create alice",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"aliceId\", pm.response.json().id);",
+                  "pm.collectionVariables.set(\"aliceKey\", pm.response.json().key);",
+                  "console.log(\"alice \" + pm.response.json().id);",
+                  "pm.collectionVariables.set('aliceName', pm.response.json().name);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{operatorKey}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"alice-{{$timestamp}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "create bob",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"bobId\", pm.response.json().id);",
+                  "pm.collectionVariables.set(\"bobKey\", pm.response.json().key);",
+                  "console.log(\"bob   \" + pm.response.json().id);",
+                  "pm.collectionVariables.set('bobName', pm.response.json().name);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{operatorKey}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"bob-{{$timestamp}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "alice lists everyone",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200\", () => pm.response.to.have.status(200));",
+                  "const names = pm.response.json().map(a => a.name);",
+                  "pm.test(\"alice and bob are listed, the issuer is not\", () => {",
+                  "  pm.expect(names).to.include(pm.collectionVariables.get('aliceName'));",
+                  "  pm.expect(names).to.include(pm.collectionVariables.get('bobName'));",
+                  "  pm.expect(names).to.not.include('@issuer');",
+                  "});",
+                  "pm.test(\"no keys are exposed\", () => pm.expect(pm.response.json().every(a => !('key' in a))).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{aliceKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts"
+              ]
+            }
+          }
+        },
+        {
+          "name": "deposit 1000 USD to alice",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201: the issuer is the only debtor, settled at once\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"state is settled\", () => pm.expect(pm.response.json().state).to.eql(\"settled\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{operatorKey}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"memo\":\"deposit\",\"legs\":[{\"from\":\"@issuer\",\"to\":\"{{aliceId}}\",\"asset\":\"USD\",\"amount\":\"1000\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "deposit 10 XAU to bob",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"state is settled\", () => pm.expect(pm.response.json().state).to.eql(\"settled\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{operatorKey}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"memo\":\"deposit\",\"legs\":[{\"from\":\"@issuer\",\"to\":\"{{bobId}}\",\"asset\":\"XAU\",\"amount\":\"10\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "alice balances",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const rows = pm.response.json();",
+                  "console.log(pm.info.requestName + \"\\n\" + rows.map(r =>",
+                  "    r.asset.padEnd(4) + \"posted \" + r.posted.padStart(9) + \"   on hold \" + r.on_hold.padStart(9)",
+                  "    + \"   available \" + r.available.padStart(9)).join(\"\\n\"));",
+                  "const of = asset => rows.find(r => r.asset === asset) || {};",
+                  "pm.test(\"USD: posted 1000.00, on hold 0.00, available 1000.00\", () => pm.expect(of(\"USD\")).to.include({posted: \"1000.00\", on_hold: \"0.00\", available: \"1000.00\"}));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{aliceKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/accounts/{{aliceId}}/balances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts",
+                "{{aliceId}}",
+                "balances"
+              ]
+            }
+          }
+        },
+        {
+          "name": "bob balances",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const rows = pm.response.json();",
+                  "console.log(pm.info.requestName + \"\\n\" + rows.map(r =>",
+                  "    r.asset.padEnd(4) + \"posted \" + r.posted.padStart(9) + \"   on hold \" + r.on_hold.padStart(9)",
+                  "    + \"   available \" + r.available.padStart(9)).join(\"\\n\"));",
+                  "const of = asset => rows.find(r => r.asset === asset) || {};",
+                  "pm.test(\"XAU: posted 10.000, on hold 0.000, available 10.000\", () => pm.expect(of(\"XAU\")).to.include({posted: \"10.000\", on_hold: \"0.000\", available: \"10.000\"}));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{bobKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/accounts/{{bobId}}/balances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts",
+                "{{bobId}}",
+                "balances"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 Transfer: one debtor, implicit approval",
+      "item": [
+        {
+          "name": "alice sends 100 USD to bob",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201: Alice is the only debtor, her approval is implicit\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"state is settled\", () => pm.expect(pm.response.json().state).to.eql(\"settled\"));",
+                  "pm.test(\"aliceId is approved\", () => pm.expect(pm.response.json().required_approvals.find(a => a.account === pm.collectionVariables.get(\"aliceId\")).decision).to.eql(\"approved\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{aliceKey}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"memo\":\"transfer\",\"legs\":[{\"from\":\"{{aliceId}}\",\"to\":\"{{bobId}}\",\"asset\":\"USD\",\"amount\":\"100\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "alice balances",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const rows = pm.response.json();",
+                  "console.log(pm.info.requestName + \"\\n\" + rows.map(r =>",
+                  "    r.asset.padEnd(4) + \"posted \" + r.posted.padStart(9) + \"   on hold \" + r.on_hold.padStart(9)",
+                  "    + \"   available \" + r.available.padStart(9)).join(\"\\n\"));",
+                  "const of = asset => rows.find(r => r.asset === asset) || {};",
+                  "pm.test(\"USD: posted 900.00, on hold 0.00, available 900.00\", () => pm.expect(of(\"USD\")).to.include({posted: \"900.00\", on_hold: \"0.00\", available: \"900.00\"}));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{aliceKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/accounts/{{aliceId}}/balances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts",
+                "{{aliceId}}",
+                "balances"
+              ]
+            }
+          }
+        },
+        {
+          "name": "bob balances",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const rows = pm.response.json();",
+                  "console.log(pm.info.requestName + \"\\n\" + rows.map(r =>",
+                  "    r.asset.padEnd(4) + \"posted \" + r.posted.padStart(9) + \"   on hold \" + r.on_hold.padStart(9)",
+                  "    + \"   available \" + r.available.padStart(9)).join(\"\\n\"));",
+                  "const of = asset => rows.find(r => r.asset === asset) || {};",
+                  "pm.test(\"USD: posted 100.00, on hold 0.00, available 100.00\", () => pm.expect(of(\"USD\")).to.include({posted: \"100.00\", on_hold: \"0.00\", available: \"100.00\"}));",
+                  "pm.test(\"XAU: posted 10.000, on hold 0.000, available 10.000\", () => pm.expect(of(\"XAU\")).to.include({posted: \"10.000\", on_hold: \"0.000\", available: \"10.000\"}));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{bobKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/accounts/{{bobId}}/balances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts",
+                "{{bobId}}",
+                "balances"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 Swap: offer, hold, approve, settle",
+      "description": "Alice offers 100 USD for 1.5 XAU. Her USD goes on hold at once, Bob's XAU moves only when he approves, both legs settle in one statement.",
+      "item": [
+        {
+          "name": "alice offers 100 USD for 1.5 XAU",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"202: two debtors, waiting for Bob\", () => pm.response.to.have.status(202));",
+                  "pm.test(\"state is pending\", () => pm.expect(pm.response.json().state).to.eql(\"pending\"));",
+                  "pm.collectionVariables.set(\"swapId\", pm.response.json().id);",
+                  "pm.test(\"aliceId is approved\", () => pm.expect(pm.response.json().required_approvals.find(a => a.account === pm.collectionVariables.get(\"aliceId\")).decision).to.eql(\"approved\"));",
+                  "pm.test(\"bobId is pending\", () => pm.expect(pm.response.json().required_approvals.find(a => a.account === pm.collectionVariables.get(\"bobId\")).decision).to.eql(\"pending\"));",
+                  "console.log(\"swap \" + pm.response.json().id + \" pending, alice approved, bob pending\");"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{aliceKey}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"memo\":\"100 USD for 1.5 XAU\",\"expires_in_secs\":900,\"legs\":[{\"from\":\"{{aliceId}}\",\"to\":\"{{bobId}}\",\"asset\":\"USD\",\"amount\":\"100\"},{\"from\":\"{{bobId}}\",\"to\":\"{{aliceId}}\",\"asset\":\"XAU\",\"amount\":\"1.5\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "alice balances: 100 USD on hold",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const rows = pm.response.json();",
+                  "console.log(pm.info.requestName + \"\\n\" + rows.map(r =>",
+                  "    r.asset.padEnd(4) + \"posted \" + r.posted.padStart(9) + \"   on hold \" + r.on_hold.padStart(9)",
+                  "    + \"   available \" + r.available.padStart(9)).join(\"\\n\"));",
+                  "const of = asset => rows.find(r => r.asset === asset) || {};",
+                  "pm.test(\"USD: posted 900.00, on hold 100.00, available 800.00\", () => pm.expect(of(\"USD\")).to.include({posted: \"900.00\", on_hold: \"100.00\", available: \"800.00\"}));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{aliceKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/accounts/{{aliceId}}/balances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts",
+                "{{aliceId}}",
+                "balances"
+              ]
+            }
+          }
+        },
+        {
+          "name": "bob balances: nothing held yet",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const rows = pm.response.json();",
+                  "console.log(pm.info.requestName + \"\\n\" + rows.map(r =>",
+                  "    r.asset.padEnd(4) + \"posted \" + r.posted.padStart(9) + \"   on hold \" + r.on_hold.padStart(9)",
+                  "    + \"   available \" + r.available.padStart(9)).join(\"\\n\"));",
+                  "const of = asset => rows.find(r => r.asset === asset) || {};",
+                  "pm.test(\"USD: posted 100.00, on hold 0.00, available 100.00\", () => pm.expect(of(\"USD\")).to.include({posted: \"100.00\", on_hold: \"0.00\", available: \"100.00\"}));",
+                  "pm.test(\"XAU: posted 10.000, on hold 0.000, available 10.000\", () => pm.expect(of(\"XAU\")).to.include({posted: \"10.000\", on_hold: \"0.000\", available: \"10.000\"}));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{bobKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/accounts/{{bobId}}/balances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts",
+                "{{bobId}}",
+                "balances"
+              ]
+            }
+          }
+        },
+        {
+          "name": "bob reads his inbox",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"the offer is in the inbox\", () => pm.expect(pm.response.json().map(p => p.id)).to.include(pm.collectionVariables.get(\"swapId\")));",
+                  "console.log(pm.response.json().map(p => p.memo + \" from \" + p.proposer).join(\"\\n\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{bobKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/accounts/{{bobId}}/inbox",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts",
+                "{{bobId}}",
+                "inbox"
+              ]
+            }
+          }
+        },
+        {
+          "name": "alice approves her own offer -> 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"409: her vote is already recorded\", () => pm.response.to.have.status(409));",
+                  "console.log(pm.response.json().detail);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{aliceKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transactions/{{swapId}}/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions",
+                "{{swapId}}",
+                "approve"
+              ]
+            }
+          }
+        },
+        {
+          "name": "bob approves -> settled",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200: the last approval settles\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"state is settled\", () => pm.expect(pm.response.json().state).to.eql(\"settled\"));",
+                  "pm.test(\"aliceId is approved\", () => pm.expect(pm.response.json().required_approvals.find(a => a.account === pm.collectionVariables.get(\"aliceId\")).decision).to.eql(\"approved\"));",
+                  "pm.test(\"bobId is approved\", () => pm.expect(pm.response.json().required_approvals.find(a => a.account === pm.collectionVariables.get(\"bobId\")).decision).to.eql(\"approved\"));",
+                  "pm.test(\"closed_at is set\", () => pm.expect(pm.response.json().closed_at).to.be.a(\"string\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{bobKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transactions/{{swapId}}/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions",
+                "{{swapId}}",
+                "approve"
+              ]
+            }
+          }
+        },
+        {
+          "name": "alice balances: hold gone, XAU arrived",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const rows = pm.response.json();",
+                  "console.log(pm.info.requestName + \"\\n\" + rows.map(r =>",
+                  "    r.asset.padEnd(4) + \"posted \" + r.posted.padStart(9) + \"   on hold \" + r.on_hold.padStart(9)",
+                  "    + \"   available \" + r.available.padStart(9)).join(\"\\n\"));",
+                  "const of = asset => rows.find(r => r.asset === asset) || {};",
+                  "pm.test(\"USD: posted 800.00, on hold 0.00, available 800.00\", () => pm.expect(of(\"USD\")).to.include({posted: \"800.00\", on_hold: \"0.00\", available: \"800.00\"}));",
+                  "pm.test(\"XAU: posted 1.500, on hold 0.000, available 1.500\", () => pm.expect(of(\"XAU\")).to.include({posted: \"1.500\", on_hold: \"0.000\", available: \"1.500\"}));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{aliceKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/accounts/{{aliceId}}/balances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts",
+                "{{aliceId}}",
+                "balances"
+              ]
+            }
+          }
+        },
+        {
+          "name": "bob balances: USD arrived, XAU left",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const rows = pm.response.json();",
+                  "console.log(pm.info.requestName + \"\\n\" + rows.map(r =>",
+                  "    r.asset.padEnd(4) + \"posted \" + r.posted.padStart(9) + \"   on hold \" + r.on_hold.padStart(9)",
+                  "    + \"   available \" + r.available.padStart(9)).join(\"\\n\"));",
+                  "const of = asset => rows.find(r => r.asset === asset) || {};",
+                  "pm.test(\"USD: posted 200.00, on hold 0.00, available 200.00\", () => pm.expect(of(\"USD\")).to.include({posted: \"200.00\", on_hold: \"0.00\", available: \"200.00\"}));",
+                  "pm.test(\"XAU: posted 8.500, on hold 0.000, available 8.500\", () => pm.expect(of(\"XAU\")).to.include({posted: \"8.500\", on_hold: \"0.000\", available: \"8.500\"}));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{bobKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/accounts/{{bobId}}/balances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts",
+                "{{bobId}}",
+                "balances"
+              ]
+            }
+          }
+        },
+        {
+          "name": "bob approves again -> 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"409: settled once, never twice\", () => pm.response.to.have.status(409));",
+                  "console.log(pm.response.json().detail);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{bobKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transactions/{{swapId}}/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions",
+                "{{swapId}}",
+                "approve"
+              ]
+            }
+          }
+        },
+        {
+          "name": "read the swap",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"state is settled\", () => pm.expect(pm.response.json().state).to.eql(\"settled\"));",
+                  "console.log(JSON.stringify(pm.response.json(), null, 2));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{aliceKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transactions/{{swapId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions",
+                "{{swapId}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4 Reject: every hold is released",
+      "item": [
+        {
+          "name": "alice offers 1 USD for 100 XAU",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 202\", () => pm.response.to.have.status(202));",
+                  "pm.test(\"state is pending\", () => pm.expect(pm.response.json().state).to.eql(\"pending\"));",
+                  "pm.collectionVariables.set(\"offerId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{aliceKey}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"memo\":\"1 USD for 100 XAU\",\"legs\":[{\"from\":\"{{aliceId}}\",\"to\":\"{{bobId}}\",\"asset\":\"USD\",\"amount\":\"1\"},{\"from\":\"{{bobId}}\",\"to\":\"{{aliceId}}\",\"asset\":\"XAU\",\"amount\":\"100\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "alice balances: 1 USD on hold",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const rows = pm.response.json();",
+                  "console.log(pm.info.requestName + \"\\n\" + rows.map(r =>",
+                  "    r.asset.padEnd(4) + \"posted \" + r.posted.padStart(9) + \"   on hold \" + r.on_hold.padStart(9)",
+                  "    + \"   available \" + r.available.padStart(9)).join(\"\\n\"));",
+                  "const of = asset => rows.find(r => r.asset === asset) || {};",
+                  "pm.test(\"USD: posted 800.00, on hold 1.00, available 799.00\", () => pm.expect(of(\"USD\")).to.include({posted: \"800.00\", on_hold: \"1.00\", available: \"799.00\"}));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{aliceKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/accounts/{{aliceId}}/balances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts",
+                "{{aliceId}}",
+                "balances"
+              ]
+            }
+          }
+        },
+        {
+          "name": "bob cannot approve what he does not have -> 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422: insufficient available balance\", () => pm.response.to.have.status(422));",
+                  "console.log(pm.response.json().detail);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{bobKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transactions/{{offerId}}/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions",
+                "{{offerId}}",
+                "approve"
+              ]
+            }
+          }
+        },
+        {
+          "name": "bob rejects",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"state is rejected\", () => pm.expect(pm.response.json().state).to.eql(\"rejected\"));",
+                  "pm.test(\"bobId is rejected\", () => pm.expect(pm.response.json().required_approvals.find(a => a.account === pm.collectionVariables.get(\"bobId\")).decision).to.eql(\"rejected\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{bobKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transactions/{{offerId}}/reject",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions",
+                "{{offerId}}",
+                "reject"
+              ]
+            }
+          }
+        },
+        {
+          "name": "alice balances: hold released",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const rows = pm.response.json();",
+                  "console.log(pm.info.requestName + \"\\n\" + rows.map(r =>",
+                  "    r.asset.padEnd(4) + \"posted \" + r.posted.padStart(9) + \"   on hold \" + r.on_hold.padStart(9)",
+                  "    + \"   available \" + r.available.padStart(9)).join(\"\\n\"));",
+                  "const of = asset => rows.find(r => r.asset === asset) || {};",
+                  "pm.test(\"USD: posted 800.00, on hold 0.00, available 800.00\", () => pm.expect(of(\"USD\")).to.include({posted: \"800.00\", on_hold: \"0.00\", available: \"800.00\"}));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{aliceKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/accounts/{{aliceId}}/balances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts",
+                "{{aliceId}}",
+                "balances"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5 Guards: no overspend, cancel, idempotency, expiry",
+      "item": [
+        {
+          "name": "alice offers 600 USD for 1 XAU",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 202\", () => pm.response.to.have.status(202));",
+                  "pm.collectionVariables.set(\"holdId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{aliceKey}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"memo\":\"600 USD for 1 XAU\",\"legs\":[{\"from\":\"{{aliceId}}\",\"to\":\"{{bobId}}\",\"asset\":\"USD\",\"amount\":\"600\"},{\"from\":\"{{bobId}}\",\"to\":\"{{aliceId}}\",\"asset\":\"XAU\",\"amount\":\"1\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "alice tries to send 600 USD while 600 are on hold -> 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422: held funds cannot be promised twice\", () => pm.response.to.have.status(422));",
+                  "console.log(pm.response.json().detail);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{aliceKey}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"memo\":\"overspend\",\"legs\":[{\"from\":\"{{aliceId}}\",\"to\":\"{{bobId}}\",\"asset\":\"USD\",\"amount\":\"600\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "alice cancels her offer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"state is cancelled\", () => pm.expect(pm.response.json().state).to.eql(\"cancelled\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{aliceKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transactions/{{holdId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions",
+                "{{holdId}}",
+                "cancel"
+              ]
+            }
+          }
+        },
+        {
+          "name": "transfer 10 USD with an Idempotency-Key",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"idemKey\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"idemId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{aliceKey}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idemKey}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"memo\":\"idempotent\",\"legs\":[{\"from\":\"{{aliceId}}\",\"to\":\"{{bobId}}\",\"asset\":\"USD\",\"amount\":\"10\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "replay the same key and body -> same answer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"201 again, stored response\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"same proposal id, no second transfer\", () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get(\"idemId\")));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{aliceKey}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idemKey}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"memo\":\"idempotent\",\"legs\":[{\"from\":\"{{aliceId}}\",\"to\":\"{{bobId}}\",\"asset\":\"USD\",\"amount\":\"10\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "same key, different body -> 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"422: key reused with a different request\", () => pm.response.to.have.status(422));",
+                  "console.log(pm.response.json().detail);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{aliceKey}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idemKey}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"memo\":\"idempotent\",\"legs\":[{\"from\":\"{{aliceId}}\",\"to\":\"{{bobId}}\",\"asset\":\"USD\",\"amount\":\"11\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "alice offers 50 USD with a 1 second TTL",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 202\", () => pm.response.to.have.status(202));",
+                  "pm.collectionVariables.set(\"ttlId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{aliceKey}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"memo\":\"expires fast\",\"expires_in_secs\":1,\"legs\":[{\"from\":\"{{aliceId}}\",\"to\":\"{{bobId}}\",\"asset\":\"USD\",\"amount\":\"50\"},{\"from\":\"{{bobId}}\",\"to\":\"{{aliceId}}\",\"asset\":\"XAU\",\"amount\":\"1\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "two seconds later it is expired",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "setTimeout(() => {}, 2500);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"state is expired\", () => pm.expect(pm.response.json().state).to.eql(\"expired\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{aliceKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transactions/{{ttlId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions",
+                "{{ttlId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "alice balances: only the 10 USD left",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const rows = pm.response.json();",
+                  "console.log(pm.info.requestName + \"\\n\" + rows.map(r =>",
+                  "    r.asset.padEnd(4) + \"posted \" + r.posted.padStart(9) + \"   on hold \" + r.on_hold.padStart(9)",
+                  "    + \"   available \" + r.available.padStart(9)).join(\"\\n\"));",
+                  "const of = asset => rows.find(r => r.asset === asset) || {};",
+                  "pm.test(\"USD: posted 790.00, on hold 0.00, available 790.00\", () => pm.expect(of(\"USD\")).to.include({posted: \"790.00\", on_hold: \"0.00\", available: \"790.00\"}));",
+                  "pm.test(\"XAU: posted 1.500, on hold 0.000, available 1.500\", () => pm.expect(of(\"XAU\")).to.include({posted: \"1.500\", on_hold: \"0.000\", available: \"1.500\"}));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{aliceKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/accounts/{{aliceId}}/balances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts",
+                "{{aliceId}}",
+                "balances"
+              ]
+            }
+          }
+        },
+        {
+          "name": "bob balances",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const rows = pm.response.json();",
+                  "console.log(pm.info.requestName + \"\\n\" + rows.map(r =>",
+                  "    r.asset.padEnd(4) + \"posted \" + r.posted.padStart(9) + \"   on hold \" + r.on_hold.padStart(9)",
+                  "    + \"   available \" + r.available.padStart(9)).join(\"\\n\"));",
+                  "const of = asset => rows.find(r => r.asset === asset) || {};",
+                  "pm.test(\"USD: posted 210.00, on hold 0.00, available 210.00\", () => pm.expect(of(\"USD\")).to.include({posted: \"210.00\", on_hold: \"0.00\", available: \"210.00\"}));",
+                  "pm.test(\"XAU: posted 8.500, on hold 0.000, available 8.500\", () => pm.expect(of(\"XAU\")).to.include({posted: \"8.500\", on_hold: \"0.000\", available: \"8.500\"}));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{bobKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/accounts/{{bobId}}/balances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts",
+                "{{bobId}}",
+                "balances"
+              ]
+            }
+          }
+        },
+        {
+          "name": "alice journal",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "console.log(pm.response.json().map(e => e.asset.padEnd(4) + e.amount.padStart(10) + \"  \" + e.proposal_id).join(\"\\n\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-account-key",
+                "value": "{{aliceKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/accounts/{{aliceId}}/entries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "accounts",
+                "{{aliceId}}",
+                "entries"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

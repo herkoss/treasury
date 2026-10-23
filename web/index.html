@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>treasury</title>
+<style>
+  :root {
+    --bg: #0b1220; --card: #141d2f; --line: #263247; --text: #e6edf6; --muted: #8b9bb4;
+    --accent: #4cc2ff; --ok: #4ade80; --bad: #f87171; --warn: #fbbf24; --hold: #c084fc;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  a { color: var(--accent); }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: .04em; }
+  header .spacer { flex: 1; }
+  header .muted a { margin-left: 10px; }
+  main { padding: 16px; max-width: 1240px; margin: 0 auto; }
+  .layout { display: grid; gap: 16px; align-items: stretch;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 1fr);
+    grid-template-areas: "balances offer people" "inbox outbox journal"; }
+  .layout.issuer { grid-template-areas: "balances offer tools" "people journal journal"; }
+  .layout.issuer .area-inbox, .layout.issuer .area-outbox { display: none; }
+  .area-balances { grid-area: balances; } .area-offer { grid-area: offer; } .area-tools { grid-area: tools; }
+  .area-inbox { grid-area: inbox; } .area-outbox { grid-area: outbox; }
+  .area-people { grid-area: people; } .area-journal { grid-area: journal; }
+  .card { min-width: 0; display: flex; flex-direction: column; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .card h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+  .card h2 .count { background: var(--line); color: var(--text); border-radius: 999px; padding: 0 8px; font-size: 12px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+  input, select { width: 100%; min-width: 0; }
+  input, select, button, textarea { font: inherit; color: var(--text); background: #0f172a; border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; }
+  input:focus, select:focus { outline: 1px solid var(--accent); }
+  button { cursor: pointer; background: #1f2b44; }
+  button.primary { background: var(--accent); color: #04121c; border-color: var(--accent); font-weight: 600; }
+  button.ok { background: #14532d; border-color: #166534; }
+  button.bad { background: #5b1a1a; border-color: #7f1d1d; }
+  button:disabled { opacity: .5; cursor: default; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 8px 0 3px; }
+  .pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+  .pair > * { min-width: 0; }
+  .layout.issuer .pair { grid-template-columns: minmax(0, 1fr); }
+  header select { width: auto; max-width: 180px; }
+  #whoami { display: flex; gap: 8px; }
+  .amount { display: grid; grid-template-columns: minmax(0, 1fr) 92px; gap: 8px; }
+  .memo { display: grid; grid-template-columns: minmax(0, 1fr) 140px; gap: 12px; }
+  .asset { display: grid; grid-template-columns: 90px minmax(0, 1fr) 80px; gap: 8px; }
+  .actions { margin-top: 12px; }
+  .hint { color: var(--muted); font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; }
+  td, th { text-align: left; padding: 5px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); } .hold { color: var(--hold); }
+  .item { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
+  .item .actions { margin-top: 8px; display: flex; gap: 8px; }
+  .people { max-height: 340px; overflow: auto; margin-top: 8px; }
+  #journal { max-height: 380px; overflow: auto; }
+  .person { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-bottom: 1px solid var(--line); }
+  .person .name { flex: 1; }
+  .empty { color: var(--muted); font-style: italic; padding: 6px 0; }
+  .keybox { background: #0f172a; border: 1px dashed var(--warn); border-radius: 8px; padding: 12px; word-break: break-all; margin: 10px 0; }
+  .auth { max-width: 880px; margin: 40px auto; }
+  .auth .pair { gap: 24px; }
+  .saved { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+  .journal .entry { display: flex; gap: 10px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .journal .entry .when { color: var(--muted); flex: 0 0 60px; font-size: 13px; }
+  .journal .entry .amounts { flex: 1; display: flex; flex-wrap: wrap; column-gap: 10px; }
+  .journal .entry .amounts span { white-space: nowrap; }
+  .journal .detail { padding: 4px 0 8px 70px; color: var(--muted); font-size: 13px; }
+  #toasts { position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 10; }
+  .toast { background: #1f2b44; border: 1px solid var(--line); border-left: 4px solid var(--accent); padding: 10px 14px; border-radius: 8px; max-width: 380px; box-shadow: 0 6px 20px #0008; }
+  .toast.ok { border-left-color: var(--ok); } .toast.bad { border-left-color: var(--bad); } .toast.warn { border-left-color: var(--warn); }
+  @media (max-width: 1080px) {
+    .layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-areas: "balances people" "offer offer" "inbox outbox" "journal journal"; }
+    .layout.issuer { grid-template-areas: "balances tools" "offer offer" "people journal"; }
+  }
+  @media (max-width: 680px) {
+    .layout, .layout.issuer { grid-template-columns: minmax(0, 1fr);
+      grid-template-areas: "balances" "inbox" "offer" "outbox" "people" "journal"; }
+    .layout.issuer { grid-template-areas: "balances" "offer" "tools" "people" "journal"; }
+    .pair, .auth .pair { grid-template-columns: minmax(0, 1fr); }
+    header .muted { display: none; }
+    .auth { margin: 16px auto; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>treasury</h1>
+  <span class="muted small">consent-based settlement · <a href="/docs">API docs</a></span>
+  <span class="spacer"></span>
+  <span id="whoami" hidden>
+    <select id="switch" title="switch account"></select>
+    <button id="signout">Sign out</button>
+  </span>
+</header>
+
+<main id="auth" class="auth" hidden>
+  <div id="saved" class="saved"></div>
+  <div class="pair">
+    <div class="card">
+      <h2>New account</h2>
+      <p class="muted small">Pick a nickname. You get a key, shown once; it is your password.</p>
+      <form id="register">
+        <label>Nickname</label>
+        <input name="name" required maxlength="32" placeholder="alice" autocomplete="off">
+        <div style="margin-top:12px"><button class="primary">Create account</button></div>
+      </form>
+      <div id="reveal" hidden>
+        <p class="warn">Save this key. It is not stored on the server and cannot be recovered.</p>
+        <div class="keybox mono" id="revealKey"></div>
+        <div class="actions" style="display:flex; gap:8px">
+          <button id="copyKey">Copy</button>
+          <button id="enter" class="primary">Continue</button>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>I have a key</h2>
+      <p class="muted small">Nickname plus the key you were given. <code>@issuer</code> with the operator key opens the issuer tools.</p>
+      <form id="login">
+        <label>Nickname</label>
+        <input name="name" required placeholder="alice" autocomplete="off">
+        <label>Key</label>
+        <input name="key" required class="mono" placeholder="64 hex characters" autocomplete="off">
+        <div style="margin-top:12px"><button class="primary">Sign in</button></div>
+      </form>
+    </div>
+  </div>
+</main>
+
+<main id="app" hidden>
+  <div class="layout" id="layout">
+    <section class="card area-balances">
+      <h2>Balances</h2>
+      <div id="balances"></div>
+    </section>
+
+    <section class="card area-offer" id="offerCard">
+      <h2 id="offerTitle">Offer</h2>
+      <form id="offer">
+        <label>Counterparty</label>
+        <select name="to" required></select>
+        <div class="pair">
+          <div>
+            <label id="giveLabel">You give</label>
+            <div class="amount">
+              <input name="giveAmount" required placeholder="100" inputmode="decimal" autocomplete="off">
+              <select name="giveAsset" required></select>
+            </div>
+          </div>
+          <div id="receiveBlock">
+            <label>You receive <span class="hint">empty = transfer</span></label>
+            <div class="amount">
+              <input name="getAmount" placeholder="1.5" inputmode="decimal" autocomplete="off">
+              <select name="getAsset"></select>
+            </div>
+          </div>
+        </div>
+        <div class="memo">
+          <div>
+            <label>Memo</label>
+            <input name="memo" maxlength="120" placeholder="optional" autocomplete="off">
+          </div>
+          <div>
+            <label>Expires in</label>
+            <select name="ttl">
+              <option value="60">1 minute</option>
+              <option value="900" selected>15 minutes</option>
+              <option value="3600">1 hour</option>
+              <option value="86400">1 day</option>
+            </select>
+          </div>
+        </div>
+        <div class="actions"><button class="primary" id="offerSubmit">Send</button></div>
+      </form>
+    </section>
+
+    <section class="card area-tools" id="issuerCard" hidden>
+      <h2>Issuer tools</h2>
+      <form id="newAsset">
+        <div class="asset">
+          <div><label>Code</label><input name="code" required placeholder="XAU" maxlength="12" autocomplete="off" style="text-transform:uppercase"></div>
+          <div><label>Name</label><input name="name" required placeholder="Gold" autocomplete="off"></div>
+          <div><label>Decimals</label><input name="scale" required type="number" min="0" max="9" value="2"></div>
+        </div>
+        <div class="actions"><button>Create asset</button></div>
+      </form>
+      <p class="muted small" id="assetsList"></p>
+    </section>
+
+    <section class="card area-inbox" id="inboxCard">
+      <h2>Inbox <span class="count" id="inboxCount">0</span></h2>
+      <p class="muted small">Offers that wait for your approval. Nothing of yours is held until you approve.</p>
+      <div id="inbox"></div>
+    </section>
+
+    <section class="card area-outbox" id="outboxCard">
+      <h2>Outbox <span class="count" id="outboxCount">0</span></h2>
+      <p class="muted small">Your pending offers. What you promised is on hold until they close.</p>
+      <div id="outbox"></div>
+    </section>
+
+    <section class="card area-people">
+      <h2>People</h2>
+      <input id="search" placeholder="search by nickname" autocomplete="off">
+      <div class="people" id="people"></div>
+    </section>
+
+    <section class="card journal area-journal">
+      <h2>Journal</h2>
+      <p class="muted small">Settled movements, newest first. Click one for the proposal behind it.</p>
+      <div id="journal"></div>
+    </section>
+  </div>
+</main>
+
+<div id="toasts"></div>
+
+<script>
+'use strict';
+
+// ---------- state ----------
+const ISSUER = '@issuer';
+const POLL_MS = 2500;
+let me = null;                      // {id, name, key, issuer}
+let accounts = [];                  // [{id, name}]
+let assets = [];                    // [{code, name, scale, archived_at}]
+let balances = [];
+let inbox = [], outbox = [], entries = [];
+let timer = null, tick = 0;
+const proposalCache = new Map();    // id -> proposal view, for the journal
+const openEntries = new Set();
+
+const $ = (sel) => document.querySelector(sel);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const saved = {
+  all() { try { return JSON.parse(localStorage.getItem('treasury.identities') || '[]'); } catch { return []; } },
+  put(identity) {
+    const rest = this.all().filter((i) => i.key !== identity.key);
+    try { localStorage.setItem('treasury.identities', JSON.stringify([identity, ...rest])); } catch {}
+  },
+  drop(key) { try { localStorage.setItem('treasury.identities', JSON.stringify(this.all().filter((i) => i.key !== key))); } catch {} },
+  current() { try { return localStorage.getItem('treasury.current'); } catch { return null; } },
+  setCurrent(key) { try { key ? localStorage.setItem('treasury.current', key) : localStorage.removeItem('treasury.current'); } catch {} },
+};
+
+// ---------- api ----------
+async function api(method, path, body, key = me && me.key) {
+  const headers = {};
+  if (key) headers['x-account-key'] = key;
+  if (body !== undefined) headers['content-type'] = 'application/json';
+  const res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = null; }
+  if (!res.ok) {
+    const err = new Error((data && data.detail) || `${res.status} ${res.statusText}`);
+    err.status = res.status;
+    throw err;
+  }
+  return { status: res.status, data };
+}
+
+function toast(message, kind = '') {
+  const el = document.createElement('div');
+  el.className = `toast ${kind}`;
+  el.textContent = message;
+  $('#toasts').appendChild(el);
+  setTimeout(() => el.remove(), 4500);
+}
+
+// ---------- helpers ----------
+const nameOf = (id) => id === ISSUER ? ISSUER : ((accounts.find((a) => a.id === id) || {}).name || (me && me.id === id ? me.name : id.slice(0, 8)));
+const isMe = (id) => me && id === me.id;
+const fmtTime = (iso) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+function fmtLeft(iso) {
+  const s = Math.max(0, Math.round((new Date(iso) - Date.now()) / 1000));
+  if (s >= 3600) return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+  if (s >= 60) return `${Math.floor(s / 60)}m ${s % 60}s`;
+  return `${s}s`;
+}
+function scaleOf(code) { const a = assets.find((x) => x.code === code); return a ? a.scale : 2; }
+
+// Describe a proposal from my point of view.
+function describe(p) {
+  const give = p.legs.filter((l) => isMe(l.from)).map((l) => `${l.amount} ${l.asset} → ${esc(nameOf(l.to))}`);
+  const get = p.legs.filter((l) => isMe(l.to)).map((l) => `${l.amount} ${l.asset} ← ${esc(nameOf(l.from))}`);
+  const other = p.legs.filter((l) => !isMe(l.from) && !isMe(l.to)).map((l) => `${esc(nameOf(l.from))} → ${esc(nameOf(l.to))} ${l.amount} ${l.asset}`);
+  let html = '';
+  if (give.length) html += `<div><span class="bad">you give</span> ${give.join(', ')}</div>`;
+  if (get.length) html += `<div><span class="ok">you get</span> ${get.join(', ')}</div>`;
+  if (other.length) html += `<div class="muted">${other.join(', ')}</div>`;
+  return html;
+}
+function votes(p) {
+  return p.required_approvals.map((a) => {
+    const cls = a.decision === 'approved' ? 'ok' : a.decision === 'rejected' ? 'bad' : 'warn';
+    return `<span class="${cls}">${esc(nameOf(a.account))}: ${a.decision}</span>`;
+  }).join(' · ');
+}
+
+// ---------- auth ----------
+function showAuth() {
+  me = null;
+  clearInterval(timer);
+  $('#app').hidden = true;
+  $('#whoami').hidden = true;
+  $('#auth').hidden = false;
+  $('#register').hidden = false;
+  $('#register').reset();
+  $('#reveal').hidden = true;
+  const list = saved.all();
+  $('#saved').innerHTML = list.length
+    ? `<span class="muted small" style="align-self:center">Continue as</span>` + list.map((i) =>
+        `<button data-key="${esc(i.key)}">${esc(i.name)}</button>`).join('')
+    : '';
+  $('#saved').querySelectorAll('button').forEach((b) => b.onclick = () => enter(list.find((i) => i.key === b.dataset.key)));
+}
+
+async function enter(identity) {
+  try {
+    // Verifies the key: balances are visible to the owner only.
+    await api('GET', `/accounts/${identity.id}/balances`, undefined, identity.key);
+  } catch (err) {
+    saved.drop(identity.key);
+    showAuth();
+    toast(err.status === 401 ? 'The key is not valid any more' : err.message, 'bad');
+    return;
+  }
+  me = identity;
+  saved.put(identity);
+  saved.setCurrent(identity.key);
+  $('#auth').hidden = true;
+  $('#app').hidden = false;
+  $('#whoami').hidden = false;
+  $('#issuerCard').hidden = !me.issuer;
+  $('#layout').classList.toggle('issuer', me.issuer);
+  $('#offerTitle').textContent = me.issuer ? 'Deposit' : 'Offer';
+  $('#giveLabel').textContent = me.issuer ? 'Amount' : 'You give';
+  $('#receiveBlock').hidden = me.issuer;
+  $('#offer').reset();
+  renderSwitch();
+  tick = 0;
+  await refresh();
+  timer = setInterval(refresh, POLL_MS);
+}
+
+function renderSwitch() {
+  const list = saved.all();
+  $('#switch').innerHTML = list.map((i) =>
+    `<option value="${esc(i.key)}" ${i.key === me.key ? 'selected' : ''}>${esc(i.name)}</option>`).join('')
+    + `<option value="">+ another account…</option>`;
+}
+$('#switch').onchange = (e) => {
+  const key = e.target.value;
+  if (!key) return showAuth();
+  const identity = saved.all().find((i) => i.key === key);
+  if (identity) enter(identity);
+};
+$('#signout').onclick = () => { saved.setCurrent(null); showAuth(); };
+
+$('#register').onsubmit = async (e) => {
+  e.preventDefault();
+  const name = e.target.name.value.trim();
+  try {
+    const { data } = await api('POST', '/accounts', { name }, null);
+    const identity = { id: data.id, name: data.name, key: data.key, issuer: false };
+    saved.put(identity);
+    $('#revealKey').textContent = data.key;
+    $('#reveal').hidden = false;
+    $('#enter').onclick = () => enter(identity);
+    $('#copyKey').onclick = () => navigator.clipboard.writeText(data.key).then(() => toast('Key copied', 'ok'));
+    e.target.hidden = true;
+  } catch (err) { toast(err.message, 'bad'); }
+};
+
+$('#login').onsubmit = async (e) => {
+  e.preventDefault();
+  const name = e.target.name.value.trim();
+  const key = e.target.key.value.trim();
+  try {
+    let identity;
+    if (name.toLowerCase() === ISSUER) {
+      identity = { id: ISSUER, name: ISSUER, key, issuer: true };
+    } else {
+      const { data } = await api('GET', '/accounts', undefined, key);
+      const found = data.find((a) => a.name.toLowerCase() === name.toLowerCase());
+      if (!found) throw new Error(`no account named ${name}`);
+      identity = { id: found.id, name: found.name, key, issuer: false };
+    }
+    await enter(identity);
+  } catch (err) { toast(err.status === 401 ? 'Unknown key' : err.message, 'bad'); }
+};
+
+// ---------- data ----------
+async function refresh() {
+  if (!me) return;
+  try {
+    const slow = tick % 4 === 0;
+    const [b, i, o, e, a, s] = await Promise.all([
+      api('GET', `/accounts/${me.id}/balances`),
+      api('GET', `/accounts/${me.id}/inbox`),
+      api('GET', `/accounts/${me.id}/outbox`),
+      api('GET', `/accounts/${me.id}/entries?limit=200`),
+      slow ? api('GET', '/accounts') : null,
+      slow ? api('GET', '/assets') : null,
+    ]);
+    balances = b.data; inbox = i.data; outbox = o.data; entries = e.data;
+    if (a) accounts = a.data;
+    if (s) assets = s.data.filter((x) => !x.archived_at);
+    tick++;
+    render();
+  } catch (err) {
+    if (err.status === 401) { toast('Signed out: the key is no longer valid', 'warn'); saved.drop(me.key); showAuth(); }
+    else toast(err.message, 'bad');
+  }
+}
+
+function render() {
+  renderBalances();
+  renderOfferForm();
+  renderInbox();
+  renderOutbox();
+  renderPeople();
+  renderJournal();
+  if (me.issuer) renderAssets();
+}
+
+function renderBalances() {
+  if (!balances.length) { $('#balances').innerHTML = '<div class="empty">nothing yet</div>'; return; }
+  $('#balances').innerHTML = `<table><tr><th>asset</th><th class="num">available</th><th class="num">on hold</th><th class="num">posted</th></tr>` +
+    balances.map((b) => `<tr><td><b>${esc(b.asset)}</b></td><td class="num ok">${b.available}</td>` +
+      `<td class="num ${b.on_hold.replace(/[0.]/g, '') ? 'hold' : 'muted'}">${b.on_hold}</td><td class="num muted">${b.posted}</td></tr>`).join('') + '</table>';
+}
+
+function keepSelection(select, html) {
+  if (select.dataset.html === html) return;
+  const was = select.value;
+  select.innerHTML = html;
+  select.dataset.html = html;
+  if ([...select.options].some((o) => o.value === was)) select.value = was;
+}
+function patch(sel, html) {
+  const el = $(sel);
+  if (el.dataset.html === html) return false;
+  el.innerHTML = html;
+  el.dataset.html = html;
+  return true;
+}
+
+function renderOfferForm() {
+  const f = $('#offer');
+  const others = accounts.filter((a) => !isMe(a.id));
+  const people = others.map((a) => `<option value="${a.id}">${esc(a.name)}</option>`).join('');
+  keepSelection(f.to, people);
+  const giveAssets = me.issuer
+    ? assets.map((a) => a.code)
+    : balances.filter((b) => parseFloat(b.available) > 0).map((b) => b.asset);
+  keepSelection(f.giveAsset, giveAssets.map((c) => `<option>${esc(c)}</option>`).join(''));
+  keepSelection(f.getAsset, assets.map((a) => `<option>${esc(a.code)}</option>`).join(''));
+  f.giveAsset.disabled = !giveAssets.length;
+  $('#offerSubmit').disabled = !f.to.options.length || !giveAssets.length;
+}
+
+$('#offer').onsubmit = async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const to = f.to.value;
+  const legs = [{ from: me.id, to, asset: f.giveAsset.value, amount: f.giveAmount.value.trim() }];
+  if (!me.issuer && f.getAmount.value.trim()) {
+    legs.push({ from: to, to: me.id, asset: f.getAsset.value, amount: f.getAmount.value.trim() });
+  }
+  const body = { memo: f.memo.value.trim(), expires_in_secs: Number(f.ttl.value), legs };
+  try {
+    const { status, data } = await api('POST', '/transactions', body);
+    if (status === 201) toast(`Settled at once: ${legs[0].amount} ${legs[0].asset} to ${nameOf(to)}`, 'ok');
+    else toast(`Offer sent, waiting for ${nameOf(to)}. Your ${legs[0].amount} ${legs[0].asset} is on hold.`, 'warn');
+    f.giveAmount.value = ''; f.getAmount.value = ''; f.memo.value = '';
+    proposalCache.set(data.id, data);
+    refresh();
+  } catch (err) { toast(err.message, 'bad'); }
+};
+
+function renderInbox() {
+  $('#inboxCount').textContent = inbox.length;
+  $('#inbox').innerHTML = inbox.length ? inbox.map((p) => `
+    <div class="item">
+      <div><b>${esc(nameOf(p.proposer))}</b> offers${p.memo ? `: <i>${esc(p.memo)}</i>` : ''} <span class="muted small">· expires in ${fmtLeft(p.expires_at)}</span></div>
+      ${describe(p)}
+      <div class="small">${votes(p)}</div>
+      <div class="actions">
+        <button class="ok" data-act="approve" data-id="${p.id}">Approve</button>
+        <button class="bad" data-act="reject" data-id="${p.id}">Reject</button>
+      </div>
+    </div>`).join('') : '<div class="empty">no offers for you</div>';
+}
+
+function renderOutbox() {
+  $('#outboxCount').textContent = outbox.length;
+  $('#outbox').innerHTML = outbox.length ? outbox.map((p) => `
+    <div class="item">
+      <div>${p.memo ? `<i>${esc(p.memo)}</i>` : 'your offer'} <span class="muted small">· expires in ${fmtLeft(p.expires_at)}</span></div>
+      ${describe(p)}
+      <div class="small">${votes(p)}</div>
+      <div class="actions"><button data-act="cancel" data-id="${p.id}">Cancel</button></div>
+    </div>`).join('') : '<div class="empty">nothing pending</div>';
+}
+
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('button[data-act]');
+  if (!b) return;
+  b.disabled = true;
+  try {
+    const { data } = await api('POST', `/transactions/${b.dataset.id}/${b.dataset.act}`);
+    proposalCache.set(data.id, data);
+    const word = { approve: data.state === 'settled' ? 'Settled' : 'Approved, waiting for the others', reject: 'Rejected, every hold released', cancel: 'Cancelled, your hold released' }[b.dataset.act];
+    toast(word, b.dataset.act === 'approve' ? 'ok' : '');
+    refresh();
+  } catch (err) { toast(err.message, 'bad'); b.disabled = false; }
+});
+
+function renderPeople() {
+  const q = $('#search').value.trim().toLowerCase();
+  const list = accounts.filter((a) => !isMe(a.id) && (!q || a.name.toLowerCase().includes(q)));
+  const changed = patch('#people', list.length ? list.map((a) => `
+    <div class="person"><span class="name">${esc(a.name)}</span>
+      <button class="small" data-offer="${a.id}">${me.issuer ? 'Deposit' : 'Offer'}</button></div>`).join('')
+    : `<div class="empty">${accounts.length > 1 ? 'no match' : 'nobody else yet, invite someone'}</div>`);
+  if (changed) $('#people').querySelectorAll('button[data-offer]').forEach((b) => b.onclick = () => {
+    $('#offer').to.value = b.dataset.offer;
+    $('#offer').giveAmount.focus();
+    $('#offerCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
+}
+$('#search').oninput = renderPeople;
+
+function renderJournal() {
+  const groups = [];
+  for (const e of [...entries].reverse()) {
+    let g = groups.find((x) => x.id === e.proposal_id);
+    if (!g) { g = { id: e.proposal_id, at: e.created_at, lines: [] }; groups.push(g); }
+    g.lines.push(e);
+  }
+  const changed = patch('#journal', groups.length ? groups.map((g) => {
+    const amounts = g.lines.map((l) => `<span class="${l.amount.startsWith('-') ? 'bad' : 'ok'}">${l.amount.startsWith('-') ? '' : '+'}${l.amount} ${esc(l.asset)}</span>`).join('');
+    const p = proposalCache.get(g.id);
+    const open = openEntries.has(g.id);
+    let detail = '';
+    if (open) {
+      detail = p ? `<div class="detail">${p.memo ? `<i>${esc(p.memo)}</i> · ` : ''}proposed by ${esc(nameOf(p.proposer))} · ${p.state} ${p.closed_at ? 'at ' + fmtTime(p.closed_at) : ''}<br>` +
+        p.legs.map((l) => `${esc(nameOf(l.from))} → ${esc(nameOf(l.to))} ${l.amount} ${esc(l.asset)}`).join('<br>') + `</div>`
+        : `<div class="detail">loading…</div>`;
+    }
+    return `<div class="entry" data-pid="${g.id}"><span class="when">${fmtTime(g.at)}</span><span class="amounts">${amounts}</span><span class="muted mono">${g.id.slice(0, 8)}</span></div>${detail}`;
+  }).join('') : '<div class="empty">no settled movements yet</div>');
+  if (changed) $('#journal').querySelectorAll('.entry').forEach((el) => el.onclick = async () => {
+    const id = el.dataset.pid;
+    if (openEntries.has(id)) { openEntries.delete(id); renderJournal(); return; }
+    openEntries.add(id);
+    renderJournal();
+    if (!proposalCache.has(id)) {
+      try { const { data } = await api('GET', `/transactions/${id}`); proposalCache.set(id, data); } catch (err) { toast(err.message, 'bad'); }
+      renderJournal();
+    }
+  });
+}
+
+// ---------- issuer ----------
+function renderAssets() {
+  $('#assetsList').innerHTML = assets.length
+    ? 'Assets: ' + assets.map((a) => `<b>${esc(a.code)}</b> (${esc(a.name)}, ${a.scale} dp)`).join(', ')
+    : 'No assets yet. Create the ones the welcome grant names, for example USD and XAU.';
+}
+$('#newAsset').onsubmit = async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  try {
+    await api('POST', '/assets', { code: f.code.value.trim().toUpperCase(), name: f.name.value.trim(), scale: Number(f.scale.value) });
+    toast(`Asset ${f.code.value.trim().toUpperCase()} created`, 'ok');
+    f.code.value = ''; f.name.value = '';
+    tick = 0; refresh();
+  } catch (err) { toast(err.message, 'bad'); }
+};
+
+// ---------- boot ----------
+(function boot() {
+  const current = saved.all().find((i) => i.key === saved.current());
+  if (current) enter(current); else showAuth();
+})();
+</script>
+</body>
+</html>
